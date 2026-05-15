@@ -1,0 +1,31 @@
+
+# datasets
+data/
+
+# python
+__pycache__/
+*.pyc
+
+# notebook checkpoints
+.ipynb_checkpoints/
+
+# models
+*.pth
+*.pt
+
+# logs
+logs/
+wandb/
+
+# vscode
+.vscode/
+
+# mac
+.DS_Store
+
+# kaggle
+kaggle.json
+
+# env
+venv/
+.env

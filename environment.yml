@@ -1,0 +1,10 @@
+
+name: gaze-estimation
+
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - torch
+      - torchvision
+      - numpy
