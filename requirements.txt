@@ -1,4 +1,5 @@
 
+
 # Core
 numpy
 pandas
@@ -6,27 +7,19 @@ scipy
 
 # Visualization
 matplotlib
-seaborn
 
-# Computer Vision
-opencv-python
-mediapipe
 
-# Deep Learning
-torch
-torchvision
-timm
-transformers
 
 # Machine Learning
 scikit-learn
 
 # Utilities
 tqdm
-pyyaml
 
 # Notebook
 jupyter
 
-# Demo
-gradio
+# Datasets
+kaggle>=1.7.0
+
+
