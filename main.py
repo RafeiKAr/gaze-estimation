@@ -6,23 +6,33 @@ import csv
 import os
 from pathlib import Path
 
+#from Abschloss.backup.dataset_reformat import skipped_subjects
 
-def extract_zip(zip_path, extract_to):
+
+def reformat(in_path, out_path):
     # shutil.unpack_archive(zip_path, extract_to)
 
-    DATASET_ROOT = Path(extract_to)
+    DATASET_ROOT = Path(in_path)
 
-    csv_path = DATASET_ROOT / "labels.csv"
+    OUTPUT_DIR = Path(out_path) / "data"
 
-    with open(csv_path, "w", newline="") as csv_file:
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
+    IMAGES_DIR = OUTPUT_DIR / "images"
+
+    csv_path = OUTPUT_DIR / "labels.csv"
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
 
         writer.writerow([
             "image_name",
             "x",
             "y",
-            "subject"
+            "subject_ID"
         ])
 
         total_images = 0
@@ -48,7 +58,7 @@ def extract_zip(zip_path, extract_to):
 
             #print(f"Processing subject {subject_id}")
 
-            total_subjects += 1
+            # total_subjects += 1
 
             # ==================================================
             # Dateien laden
@@ -67,15 +77,38 @@ def extract_zip(zip_path, extract_to):
             )
 
             # --------------------------------------------------
+            if not frames_file.exists():
+                print(f"Skipping {subject_id}: frames.json missing")
+                #skipped_subjects += 1
+                continue
 
-            with open(frames_file, "r") as f:
-                frame_names = json.load(f)
+            if not dotinfo_file.exists():
+                print(f"Skipping {subject_id}: dotInfo.json missing")
+                #skipped_subjects += 1
+                continue
 
-            with open(dotinfo_file, "r") as f:
-                dot_info = json.load(f)
+            if not frames_folder.exists():
+                print(f"Skipping {subject_id}: frames folder missing")
+                #skipped_subjects += 1
+                continue
+            # --------------------------------------------------
 
-            x_values = dot_info["XPts"]
-            y_values = dot_info["YPts"]
+            try:
+                with open(frames_file, "r", encoding="utf-8") as f:
+                    frame_names = json.load(f)
+
+                with open(dotinfo_file, "r", encoding="utf-8") as f:
+                    dot_info = json.load(f)
+
+            except Exception as e:
+                print(f"Skipping {subject_id}: JSON read error --> {e}")
+
+            try:
+                x_values = dot_info["XPts"]
+                y_values = dot_info["YPts"]
+
+            except KeyError as e:
+                print(f"Skipping {subject_id}: missing key --> {e}")
 
             if len(frame_names) != len(x_values):
                 print(
@@ -84,6 +117,8 @@ def extract_zip(zip_path, extract_to):
                     f"{len(x_values)} labels"
                 )
                 continue
+
+            total_subjects += 1
 
             # ==================================================
             # Alle Frames bearbeiten
@@ -135,7 +170,7 @@ def download_kaggle():
 
     api.dataset_download_files(
         'dhruv413/gaze-capture-20gb-zip',
-        path='.',
+        path='./dataset/gaze-capture-20gb',
         unzip=True
     )
 
@@ -143,11 +178,19 @@ def download_kaggle():
 
 
 #if files don't exist, download them from kaggle
-if not os.path.exists('gaze_capture_20gb/00002/00002/frames/00000.jpg'):
-    print("\nI have to dowanload Dataset!")
-    confirm = input("\nDo I download the Dataset? (y/n)")
-    if confirm == 'y':
-        download_kaggle()
-if not os.path.exists('gaze_capture_20gb/labels.csv'):
-    extract_zip("gaze-capture-20gb-zip.zip", "gaze_capture_20gb")
+def main():
+    dataset_path = '/home/ari/PycharmProjects/Ven/Abschloss/dataset'
+    if not os.path.exists('/home/ari/PycharmProjects/Ven/Abschloss/dataset/00002/00002/frames/00000.jpg'):
+        print("\nI have to dowanload Dataset!")
+        confirm = input("\nDo I download the Dataset? (y/n)")
+        if confirm == 'y':
+            download_kaggle()
+    else:
+        print(f"Dataset found: {dataset_path}")
+    if not os.path.exists('./dataset/data/labels.csv'):
+        reformat(dataset_path, "./dataset/")
+
+
+if __name__ == "__main__":
+    main()
 
