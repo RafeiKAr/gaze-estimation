@@ -5,6 +5,9 @@ import json
 import csv
 import os
 from pathlib import Path
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 
 #from Abschloss.backup.dataset_reformat import skipped_subjects
 
@@ -177,6 +180,108 @@ def download_kaggle():
     print("Download completed!")
 
 
+def random_split(input_file):
+    # CSV laden
+    df = pd.read_csv(input_file)
+
+    # Gruppen definieren:
+    # Alle Zeilen mit gleichem subject_ID, x und y gehören zusammen
+    df["group_id"] = (
+        df["subject_ID"].astype(str) + "_" +
+        df["x"].astype(str) + "_" +
+        df["y"].astype(str)
+    )
+
+    # Gruppenweiser Split
+    gss = GroupShuffleSplit(
+        n_splits=1,
+        test_size=0.2,
+        random_state=42
+    )
+
+    train_idx, test_idx = next(
+        gss.split(df, groups=df["group_id"])
+    )
+
+    rand_train_df = df.iloc[train_idx].drop(columns=["group_id"])
+    rand_test_df = df.iloc[test_idx].drop(columns=["group_id"])
+
+    # Speichern
+    rand_train_df.to_csv("./splits/random_train.csv", index=False)
+    print(f"\n   The file 'random_train.csv' is created!    -->     Train samples: {len(rand_train_df)}")
+
+    rand_test_df.to_csv("./splits/random_test.csv", index=False)
+    print(f"\n   The file 'random_test.csv' is created!     -->     Test samples: {len(rand_test_df)}")
+
+    # print(f"Train samples: {len(train_df)}")
+    # print(f"Test samples: {len(test_df)}")
+
+
+
+def subjects_split(input_file):
+
+    df = pd.read_csv(input_file)
+
+    subjects = df["subject_ID"].unique()
+
+    train_subjects, test_subjects = train_test_split(
+        subjects,
+        test_size=0.2,
+        random_state=42,
+        shuffle=True
+    )
+    sub_train_df = df[df["subject_ID"].isin(train_subjects)]
+    sub_test_df = df[df["subject_ID"].isin(test_subjects)]
+
+    sub_train_df.to_csv("./splits/subject_train.csv",index=False)
+    print(f"\n   The file: 'subject_train.csv' is created!   -->     Train samples: {len(sub_train_df)}")
+
+    sub_test_df.to_csv("./splits/subject_test.csv",index=False)
+    print(f"\n   The file: 'subject_test.csv' is created!    -->     Train samples: {len(sub_test_df)}")
+
+## ---------------------------------------------------------------------------------------------
+## ------------------ Test Split: --------------------------------------------------------------
+## ---------------------------------------------------------------------------------------------
+def test_split(input_train, input_test):
+    train_df = pd.read_csv(input_train)
+    test_df = pd.read_csv(input_test)
+
+    # Extract subject sets:
+    train_subjects = set(train_df["subject_ID"].unique())
+    test_subjects = set(test_df["subject_ID"].unique())
+
+    # 1. check intersection (important)
+    overlap = train_subjects.intersection(test_subjects)
+
+    if len(overlap) == 0:
+        print("\n************\nOk, No overlapping subjects between train and test!\n************\n")
+
+    else:
+        print("\n************\nERROR: Overlapping subjects detected!\n************\n")
+        print(f"\nNumber of Overlapping subjects: {len(overlap)}\n")
+        print(f"\n\nExample overlap:\n", list(overlap)[:10])
+
+    # 2: full coverage sanity
+    all_subjects_original = train_subjects.union(test_subjects)
+    print(f"Total unique subjects in split: {len(all_subjects_original)}")
+
+    # 3: Ensure no subjects appears in both files at all:
+    train_counts = train_df["subject_ID"].value_counts()
+    test_counts = test_df["subject_ID"].value_counts()
+
+    common_rows = set(train_counts.index).intersection(set(test_counts.index))
+
+    if common_rows:
+        print("\n************\nWARNING: These subjects appeare in both splits:")
+        print(list(common_rows)[:10])
+
+    else:
+        print("\n************\nOK, No subject appears in both splits at row level!!\n************\n")
+
+## ---------------------------------------------------------------------------------------------
+
+
+
 #if files don't exist, download them from kaggle
 def main():
 
@@ -194,6 +299,16 @@ def main():
         reformat(dataset_path, "./dataset/")
         if os.path.exists('./dataset/labels.csv'):
             print(f"Now can find the file: 'labels.csv' !\n ")
+
+    if not os.path.exists('./splits/random_train.csv') or not os.path.exists('./splits/random_test.csv'):
+        random_split('./dataset/labels.csv')
+
+    if not os.path.exists('./splits/subject_train.csv') or not os.path.exists('./splits/subject_test.csv'):
+        subjects_split('./dataset/labels.csv')
+        split_test = input("\n Do I have to test SPLIT?(y/n)")
+        print("\n")
+        if split_test == 'y':
+            test_split('./splits/subject_train.csv', './splits/subject_test.csv')
 
 
 
