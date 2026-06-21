@@ -1,6 +1,6 @@
 
 # datasets
-dataset/images
+dataset/images/**
 
 
 # python
