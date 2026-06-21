@@ -1,6 +1,7 @@
 
 # datasets
-data/
+dataset/images
+
 
 # python
 __pycache__/

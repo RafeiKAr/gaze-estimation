@@ -14,7 +14,7 @@ def reformat(in_path, out_path):
 
     DATASET_ROOT = Path(in_path)
 
-    OUTPUT_DIR = Path(out_path) / "data"
+    OUTPUT_DIR = Path(out_path)
 
     OUTPUT_DIR.mkdir(
         parents=True,
@@ -170,7 +170,7 @@ def download_kaggle():
 
     api.dataset_download_files(
         'dhruv413/gaze-capture-20gb-zip',
-        path='./dataset/gaze-capture-20gb',
+        path='./dataset/images/gaze-capture-20gb',
         unzip=True
     )
 
@@ -179,16 +179,24 @@ def download_kaggle():
 
 #if files don't exist, download them from kaggle
 def main():
-    dataset_path = '/home/ari/PycharmProjects/Ven/Abschloss/dataset'
-    if not os.path.exists('/home/ari/PycharmProjects/Ven/Abschloss/dataset/00002/00002/frames/00000.jpg'):
+
+    dataset_path = './dataset/images'
+    # if not os.path.exists('./dataset/gaze-capture-20gb/00002/00002/frames/00000.jpg'):
+    if not os.path.exists('./dataset/images/00002/00002/frames/00000.jpg'):
         print("\nI have to dowanload Dataset!")
         confirm = input("\nDo I download the Dataset? (y/n)")
         if confirm == 'y':
             download_kaggle()
     else:
         print(f"Dataset found: {dataset_path}")
-    if not os.path.exists('./dataset/data/labels.csv'):
+    if not os.path.exists('./dataset/labels.csv'):
+        print(f"The file: 'labels.csv' is necessary, but doesn't find!\n Try to create it ...  ")
         reformat(dataset_path, "./dataset/")
+        if os.path.exists('./dataset/labels.csv'):
+            print(f"Now can find the file: 'labels.csv' !\n ")
+
+
+
 
 
 if __name__ == "__main__":
