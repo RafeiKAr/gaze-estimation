@@ -285,8 +285,7 @@ def test_split(input_train, input_test):
 #if files don't exist, download them from kaggle
 def main():
 
-    dataset_path = './dataset/images'
-    # if not os.path.exists('./dataset/gaze-capture-20gb/00002/00002/frames/00000.jpg'):
+    dataset_path = './dataset/images/'
     if not os.path.exists('./dataset/images/00002/00002/frames/00000.jpg'):
         print("\nI have to dowanload Dataset!")
         confirm = input("\nDo I download the Dataset? (y/n)")
