@@ -12,6 +12,8 @@ matplotlib
 
 # Machine Learning
 scikit-learn
+torch
+torchvision
 
 # Utilities
 tqdm

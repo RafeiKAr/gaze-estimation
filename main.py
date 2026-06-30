@@ -79,6 +79,10 @@ def reformat(in_path, out_path):
                 inner_subject_dir / "frames"
             )
 
+            screen_file = (
+                    inner_subject_dir / "screen.json"
+            )
+
             # --------------------------------------------------
             if not frames_file.exists():
                 print(f"Skipping {subject_id}: frames.json missing")
@@ -94,6 +98,11 @@ def reformat(in_path, out_path):
                 print(f"Skipping {subject_id}: frames folder missing")
                 #skipped_subjects += 1
                 continue
+
+            if not screen_file.exists():
+                print(f"Skipping {subject_id}: frames folder missing")
+                #skipped_subjects += 1
+                continue
             # --------------------------------------------------
 
             try:
@@ -103,12 +112,19 @@ def reformat(in_path, out_path):
                 with open(dotinfo_file, "r", encoding="utf-8") as f:
                     dot_info = json.load(f)
 
+                with open(screen_file, "r", encoding="utf-8") as f:
+                    screen_info = json.load(f)
+
             except Exception as e:
                 print(f"Skipping {subject_id}: JSON read error --> {e}")
 
             try:
                 x_values = dot_info["XPts"]
                 y_values = dot_info["YPts"]
+
+                h_values = screen_info["H"]
+                w_values = screen_info["W"]
+                # o_values = screen_info["Orientation"]
 
             except KeyError as e:
                 print(f"Skipping {subject_id}: missing key --> {e}")
@@ -134,6 +150,20 @@ def reformat(in_path, out_path):
                 x = x_values[idx]
                 y = y_values[idx]
 
+                h = h_values[idx]
+                w = w_values[idx]
+                # ori = o_values[idx]
+
+                # --------------------------------------------------
+                # Orientation handling
+                # --------------------------------------------------
+                # h, w = H, W
+
+                # Normalisation:
+                x_norm = x / w
+                y_norm = y / h
+
+
                 source_image = (
                     frames_folder /
                     original_image_name
@@ -148,8 +178,8 @@ def reformat(in_path, out_path):
 
                 writer.writerow([
                     source_image,
-                    x,
-                    y,
+                    x_norm,
+                    y_norm,
                     subject_id
                 ])
 
@@ -163,6 +193,7 @@ def reformat(in_path, out_path):
     print(f"Subjects processed : {total_subjects}")
     print(f"Images processed   : {total_images}")
     print(f"CSV saved to       : {csv_path}")
+
 
 
 def download_kaggle():
@@ -293,6 +324,7 @@ def main():
             download_kaggle()
     else:
         print(f"Dataset found: {dataset_path}")
+
     if not os.path.exists('./dataset/labels.csv'):
         print(f"The file: 'labels.csv' is necessary, but doesn't find!\n Try to create it ...  ")
         reformat(dataset_path, "./dataset/")
