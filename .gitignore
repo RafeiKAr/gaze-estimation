@@ -30,3 +30,6 @@ kaggle.json
 # env
 venv/
 .env
+Venv/
+
+.idea/

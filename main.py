@@ -181,8 +181,8 @@ def normalize(in_path, out_path):
 
         writer.writerow([
             "image_name",
-            "x_norm",
-            "y_norm",
+            "x",
+            "y",
             "subject_ID"
         ])
 
@@ -346,6 +346,7 @@ def download_kaggle():
 
 def random_split(input_file):
     # CSV laden
+    print(f"input_file: {input_file}")
     df = pd.read_csv(input_file)
 
     # Gruppen definieren:
@@ -370,15 +371,32 @@ def random_split(input_file):
     rand_train_df = df.iloc[train_idx].drop(columns=["group_id"])
     rand_test_df = df.iloc[test_idx].drop(columns=["group_id"])
 
+
+    mapping = {
+        "labels.csv": (
+            "./splits/random_train.csv",
+            "./splits/random_test.csv"
+        ),
+        "norm_labels.csv": (
+            "./splits/norm_random_train.csv",
+            "./splits/norm_random_test.csv"
+        )
+    }
+
+    filename = os.path.basename(input_file)
+    print(f"\nfilename: {filename}")
+
+    try:
+        train_name, test_name = mapping[filename]
+    except KeyError:
+        raise ValueError(f"Unknown input file: {input_file}")
+
     # Speichern
-    rand_train_df.to_csv("./splits/random_train.csv", index=False)
-    print(f"\n   The file 'random_train.csv' is created!    -->     Train samples: {len(rand_train_df)}")
+    rand_train_df.to_csv(train_name, index=False)
+    print(f"The file '{os.path.basename(train_name)}' is created! --> Train samples: {len(rand_train_df)}")
 
-    rand_test_df.to_csv("./splits/random_test.csv", index=False)
-    print(f"\n   The file 'random_test.csv' is created!     -->     Test samples: {len(rand_test_df)}")
-
-    # print(f"Train samples: {len(train_df)}")
-    # print(f"Test samples: {len(test_df)}")
+    rand_test_df.to_csv(test_name, index=False)
+    print(f"The file '{os.path.basename(test_name)}' is created! --> Test samples: {len(rand_test_df)}\n")
 
 
 
@@ -397,11 +415,32 @@ def subjects_split(input_file):
     sub_train_df = df[df["subject_ID"].isin(train_subjects)]
     sub_test_df = df[df["subject_ID"].isin(test_subjects)]
 
-    sub_train_df.to_csv("./splits/subject_train.csv",index=False)
-    print(f"\n   The file: 'subject_train.csv' is created!   -->     Train samples: {len(sub_train_df)}")
 
-    sub_test_df.to_csv("./splits/subject_test.csv",index=False)
-    print(f"\n   The file: 'subject_test.csv' is created!    -->     Train samples: {len(sub_test_df)}")
+    mapping = {
+        "norm_labels.csv": (
+            "./splits/norm_subject_train.csv",
+            "./splits/norm_subject_test.csv"
+        ),
+        "labels.csv": (
+            "./splits/subject_train.csv",
+            "./splits/subject_test.csv"
+        )
+    }
+
+    filename = os.path.basename(input_file)
+    print(f"\nfilename: {filename}")
+
+    try:
+        train_name, test_name = mapping[filename]
+    except KeyError:
+        raise ValueError(f"Unknown input file: {input_file}")
+
+
+    sub_train_df.to_csv(train_name,index=False)
+    print(f"The file '{os.path.basename(train_name)}' is created! --> Train samples: {len(sub_train_df)}")
+
+    sub_test_df.to_csv(test_name,index=False)
+    print(f"The file '{os.path.basename(test_name)}' is created! --> Test samples: {len(sub_test_df)}\n")
 
 ## ---------------------------------------------------------------------------------------------
 ## ------------------ Test Split: --------------------------------------------------------------
@@ -472,11 +511,16 @@ def main():
             if os.path.exists('./dataset/norm_labels.csv'):
                 print(f"Now can find the file: 'norm_labels.csv' !\n ")
 
-    confirm_split = input("Do I have to create split-files with 'labels' oder 'norm_labesl' ? (l/n)? ")
-    if confirm_split.lower() == 'l':
-        csv_path = './dataset/labels.csv'
-    elif confirm_split.lower() == 'n':
-        csv_path = './dataset/norm_labels.csv'
+    while(True):
+        confirm_split = input("Create split-files for labels or norm_labels? (l/n):")
+        if confirm_split.lower() == 'l':
+            csv_path = './dataset/labels.csv'
+            break
+        elif confirm_split.lower() == 'n':
+            csv_path = './dataset/norm_labels.csv'
+            break
+        else:
+            raise ValueError("Invalid input. Please enter 'l' or 'n'.")
 
     # Checking for random-split-files:
     if not os.path.exists('./splits/random_train.csv') or not os.path.exists('./splits/random_test.csv'):
@@ -490,7 +534,13 @@ def main():
         split_test = input("\n Do I have to test SPLIT?(y/n)")
         print("\n")
         if split_test == 'y':
-            check_split('./splits/subject_train.csv', './splits/subject_test.csv')
+            if confirm_split.lower() == 'n':
+                train_path, test_path = "./splits/norm_subject_train.csv", "./splits/norm_subject_test.csv"
+
+            elif confirm_split.lower() == 'l':
+                train_path, test_path = "./splits/subject_train.csv", "./splits/subject_test.csv"
+
+            check_split(train_path, test_path)
 
 
 if __name__ == "__main__":
