@@ -21,216 +21,238 @@ from torchvision.models import (
 from datetime import datetime
 
 
-# 2: CSV laden
-df = pd.read_csv("dataset/labels.csv")
-df.head()
-# check:
-print(df.shape)
-
-
-# 3: check a image
-row = df.iloc[0]
-img = Image.open(row["image_name"])
-plt.imshow(img)
-plt.show()
-print(row["x"], row["y"])
-
-
-# 4: Dataset Class: transfer CSV in PyTorch.
+# 2: Dataset Class: transfer CSV in PyTorch.
 class GazeDataset(Dataset):
 
-    def __init__(self, csv_file, transform=None, dataset_size=None, read_all4once=True):
+    def __init__(self, csv_file, transform=None, dataset_size=None):
 
         self.df = pd.read_csv(csv_file)
+
+        if dataset_size is not None:
+            self.df = self.df.iloc[:dataset_size]
+
         self.transform = transform
-        self.dataset_size = dataset_size if dataset_size is not None else len(self.df)
-        self.read_all4once = read_all4once
 
-        if self.read_all4once:
-            img = Image.new("RGB", (500, 300))  # any size
-            out = transform(img)
-            self.images = torch.zeros([self.dataset_size] + list(out.shape))
-            self.targets = torch.zeros(self.dataset_size, 2)
-
-        for idx in tqdm(range(self.dataset_size)):
-
-            row = self.df.iloc[idx]
-
-            image = Image.open(
-                row["image_name"]
-            ).convert("RGB")
-
-            self.targets[idx] = torch.tensor(
-                [row["x"], row["y"]],
-                dtype=torch.float32
-            )
-
-            if self.transform:
-                self.images[idx] = self.transform(image)
-            else:
-                self.images[idx] = image
 
     def __len__(self):
-
-        return self.dataset_size
+        return len(self.df)
+        # return self.dataset_size
 
     def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        image = Image.open(row["image_name"]).convert("RGB")
 
-        return self.images[idx], self.targets[idx]
+        if self.transform:
+            image = self.transform(image)
 
-
-# 5: DataLoader
-# Transformationen:
-transform = transforms.Compose([
-    transforms.Resize((224,224)),
-    transforms.ToTensor()
-])
-
-
-# Dataset:
-train_dataset = GazeDataset(
-    "./splits/subject_train.csv",
-    transform,dataset_size=2000,
-)
-
-test_dataset = GazeDataset(
-    "./splits/subject_test.csv",
-    transform,dataset_size=500,
-)
-
-print(len(train_dataset))
-print(len(test_dataset))
-
-
-# Loader:
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=64,
-    shuffle=True,
-    num_workers=4
-)
-
-test_loader = DataLoader(
-    test_dataset,
-    batch_size=64,
-    shuffle=False,
-    num_workers=4
-)
-
-
-# 6: ResNet18 (Pretrainiertes Modell):
-
-# Load:
-model = resnet18(
-    weights=ResNet18_Weights.DEFAULT
-)
-
-# last layer Original: 512 → 1000, but we need: 512 → 2 (for x, y)
-model.fc = nn.Sequential(
-    nn.Linear(
-        model.fc.in_features,
-        512
-    ),
-    nn.ReLU(),
-
-    nn.Linear(
-        512,
-        128
-    ),
-    nn.ReLU(),
-
-    nn.Dropout(0.2),
-
-    nn.Linear(
-        128,
-        2
-    )
-)
-
-
-# 7: GPU
-
-# check:
-device = torch.device(
-    "cuda"
-    if torch.cuda.is_available()
-    else "cpu"
-)
-
-print(device)
-
-model.to(device)
-
-
-# 8: Loss and Optimizer
-
-# for regression:
-# criterion = nn.MSELoss()
-criterion = nn.SmoothL1Loss()
-
-# for param in model.parameters():
-#     param.requires_grad = False
-
-# # Unfreeze the head
-# for param in model.fc.parameters():
-#     param.requires_grad = True
-
-# Optimizer:
-optimizer = torch.optim.Adam(
-    model.parameters(),
-    # model.fc.parameters(),
-    lr=1e-4
-)
-
-
-# 9: Training
-epochs = 10
-# epochs = 2
-# epochs = 10
-
-for epoch in range(epochs):
-
-    model.train()
-
-    running_loss = 0
-
-    loop = tqdm(
-        train_loader,
-        desc=f"Epoch {epoch+1}"
-    )
-
-    for images, targets in loop:
-
-        images = images.to(device)
-        targets = targets.to(device)
-
-        optimizer.zero_grad()
-
-        preds = model(images)
-
-        loss = criterion(
-            preds,
-            targets
+        target = torch.tensor(
+            [row["x"], row["y"]],
+            dtype=torch.float32
         )
 
-        loss.backward()
+        return image, target
+        # return self.images[idx], self.targets[idx]
 
-        optimizer.step()
 
-        running_loss += loss.item()
+# 3: func-diagonla-error:
+def diagonal_errors(model, loader, device):
+    model.eval()
 
-        loop.set_postfix(
-            loss=loss.item()
+    errors = []
+
+    with torch.no_grad():
+        for images, targets in loader:
+            images = images.to(device)
+            targets = targets.to(device)
+
+            preds = model(images)
+
+            # Euclidean distance per sample
+            dist = torch.sqrt(((preds - targets) ** 2).sum(dim=1))
+
+            # normalize by image diagonal
+            dist = dist / np.sqrt(2)
+
+            errors.append(dist)
+
+    errors = torch.cat(errors)
+
+    return errors.mean().item(), errors.max().item()
+
+
+
+def main():
+    # 4: CSV laden
+    df = pd.read_csv("dataset/labels.csv")
+    df.head()
+    # check:
+    #print(df.shape)
+
+    # 5: check a image
+    # row = df.iloc[0]
+    # img = Image.open(row["image_name"])
+    # plt.imshow(img)
+    # plt.show()
+    # print(row["x"], row["y"])
+
+    # 6: DataLoader
+    # Transformationen:
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ColorJitter(
+            brightness=0.2,
+            contrast=0.2
+        ),
+        transforms.RandomAffine(
+            degrees=3,
+            translate=(0.02, 0.02)
+        ),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
+    ])
+
+    # 7: Dataset:
+    train_dataset = GazeDataset(
+        "./splits/subject_train.csv",
+        transform, dataset_size=10000,
+    )
+    test_dataset = GazeDataset(
+        "./splits/subject_test.csv",
+        transform, dataset_size=2500,
+    )
+    # print(len(train_dataset))
+    # print(len(test_dataset))
+
+    # Loader:
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=64,
+        shuffle=True,
+        num_workers=8,
+        persistent_workers=True
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=64,
+        shuffle=False,
+        num_workers=8,
+        persistent_workers=True
+    )
+
+    # 8: ResNet18 (pretrainate Modell):
+    # Load:
+    model = resnet18(
+        weights=ResNet18_Weights.DEFAULT
+    )
+
+    # last layer Original: 512 → 1000, but we need: 512 → 2 (for x, y)
+    model.fc = nn.Sequential(
+        nn.Linear(
+            model.fc.in_features,
+            512
+        ),
+        nn.ReLU(),
+        nn.Linear(
+            512,
+            128
+        ),
+        nn.ReLU(),
+        nn.Dropout(0.2),
+        nn.Linear(
+            128,
+            2
+        )
+    )
+
+    # 9: GPU
+    # check:
+    device = torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
+    )
+    # print(device)
+    model.to(device)
+
+    # 10: Loss and Optimizer
+
+    # for regression:
+    # criterion = nn.MSELoss()
+    criterion = nn.SmoothL1Loss()
+
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Unfreeze the head
+    for param in model.fc.parameters():
+        param.requires_grad = True
+
+    # Optimizer:
+    optimizer = torch.optim.Adam(
+        # model.parameters(),
+        model.fc.parameters(),
+        lr = 1e-3
+    )
+
+    # 11: Training
+    epochs = 10
+    # epochs = 2
+    # epochs = 10
+
+    best_error, test_err_mean, test_err_max = None, None, None
+
+    for epoch in range(epochs):
+
+        model.train()
+        running_loss = 0
+
+        loop = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch + 1}"
         )
 
-    print(
-        f"[{[datetime.now().strftime('%H:%M:%S')]}] Epoch {epoch+1}: "
-        f"{running_loss/len(train_loader):.4f}"
-    )
-    torch.save(model.state_dict(),"last_model.pth")
+        for images, targets in loop:
+            images = images.to(device)
+            targets = targets.to(device)
+            optimizer.zero_grad()
+            preds = model(images)
+
+            loss = criterion(
+                preds,
+                targets
+            )
+
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+
+            loop.set_postfix(
+                loss=loss.item()
+            )
+        train_mean_err, train_max_err = diagonal_errors(model, train_loader, device)
+        test_mean_err, test_max_err = diagonal_errors(model, test_loader, device)
+
+        if best_error is None or test_mean_err < best_error:
+            best_error = test_mean_err
+            torch.save(model.state_dict(), "best_model.path")
+
+
+        print(
+            f"[{[datetime.now().strftime('%H:%M:%S')]}] Epoch {epoch + 1}: "
+            f"{running_loss / len(train_loader):.4f} | "
+            f"train_diag_max={100*train_max_err:.3f}% | test_diag_max={100*test_max_err:.3f}% \n"
+        )
+
+        torch.save(model.state_dict(), "last_model.pth")
 
 
 
+if __name__ == "__main__":
+    main()
 
 
 
