@@ -83,7 +83,7 @@ def diagonal_errors(model, loader, device):
 
 def main():
     # 4: CSV laden
-    df = pd.read_csv("dataset/labels.csv")
+    df = pd.read_csv("dataset/norm_labels.csv")
     df.head()
     # check:
     #print(df.shape)
@@ -195,7 +195,7 @@ def main():
     optimizer = torch.optim.Adam(
         # model.parameters(),
         model.fc.parameters(),
-        lr = 1e-3
+        lr = 1e-4
     )
 
     # 11: Training
@@ -256,6 +256,7 @@ if __name__ == "__main__":
 
 
 
+
 """
 # save the model:
 torch.save(
@@ -301,26 +302,4 @@ targets_all = torch.cat(
 )
 
 
-
-# 10: Evaluation
-
-screen_w = 984.0
-
-mae = mean_absolute_error(
-    targets_all.numpy(),
-    predictions.numpy()
-)
-
-rmse = np.sqrt(
-    mean_squared_error(
-        targets_all.numpy(),
-        predictions.numpy()
-    )
-)
-
-print("MAE :", mae)
-print("RMSE:", rmse)
-
-#print(f"\nDiagonal-Error %: {100*np.round(mae / np.sqrt(2*screen_w**2), 3)} %")
-print(f"\n\nDiagonal-Error %: {100*np.round(rmse / np.sqrt(2*screen_w**2), 3)} %")
 """
