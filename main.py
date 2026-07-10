@@ -181,9 +181,11 @@ def normalize(in_path, out_path):
 
         writer.writerow([
             "image_name",
-            "x",
-            "y",
-            "subject_ID"
+            "x_norm",
+            "y_norm",
+            "subject_ID",
+            "screen_w",
+            "screen_h"
         ])
 
         total_images = 0
@@ -289,13 +291,13 @@ def normalize(in_path, out_path):
                 x = x_values[idx]
                 y = y_values[idx]
 
-                h = h_values[idx]
-                w = w_values[idx]
+                screen_h = h_values[idx]
+                screen_w = w_values[idx]
 
 
                 # Normalisation:
-                x_norm = x / w
-                y_norm = y / h
+                x_norm = x / screen_w
+                y_norm = y / screen_h
 
 
                 source_image = (
@@ -314,7 +316,9 @@ def normalize(in_path, out_path):
                     source_image,
                     x_norm,
                     y_norm,
-                    subject_id
+                    subject_id,
+                    screen_w,
+                    screen_h
                 ])
 
                 total_images += 1
