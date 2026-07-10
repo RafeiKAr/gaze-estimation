@@ -11,8 +11,10 @@ __pycache__/
 .ipynb_checkpoints/
 
 # models
+models/**
 *.pth
 *.pt
+*.path
 
 # logs
 logs/

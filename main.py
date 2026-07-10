@@ -506,25 +506,27 @@ def main():
         if os.path.exists('./dataset/labels.csv'):
             print(f"Now can find the file: 'labels.csv' !\n ")
 
-    # Checking for normalize-file (norm_labels.csv):
-    if not os.path.exists('./dataset/norm_labels.csv'):
-        submit = input(
-            f"The file: 'norm_labels.csv' is maybe needed, but doesn't find!\n Do I have to create it? (y/n)")
-        if submit.lower() == 'y':
-            normalize(dataset_path, "./dataset/")
-            if os.path.exists('./dataset/norm_labels.csv'):
-                print(f"Now can find the file: 'norm_labels.csv' !\n ")
+    # # Checking for normalize-file (norm_labels.csv):
+    # if not os.path.exists('./dataset/norm_labels.csv'):
+    #     submit = input(
+    #         f"The file: 'norm_labels.csv' is maybe needed, but doesn't find!\n Do I have to create it? (y/n)")
+    #     if submit.lower() == 'y':
+    #         normalize(dataset_path, "./dataset/")
+    #         if os.path.exists('./dataset/norm_labels.csv'):
+    #             print(f"Now can find the file: 'norm_labels.csv' !\n ")
 
-    while(True):
-        confirm_split = input("Create split-files for labels or norm_labels? (l/n):")
-        if confirm_split.lower() == 'l':
-            csv_path = './dataset/labels.csv'
-            break
-        elif confirm_split.lower() == 'n':
-            csv_path = './dataset/norm_labels.csv'
-            break
-        else:
-            raise ValueError("Invalid input. Please enter 'l' or 'n'.")
+    csv_path = './dataset/labels.csv'
+
+    # while(True):
+    #     confirm_split = input("Create split-files for labels or norm_labels? (l/n):")
+    #     if confirm_split.lower() == 'l':
+    #         csv_path = './dataset/labels.csv'
+    #         break
+    #     elif confirm_split.lower() == 'n':
+    #         csv_path = './dataset/norm_labels.csv'
+    #         break
+    #     else:
+    #         raise ValueError("Invalid input. Please enter 'l' or 'n'.")
 
     # Checking for random-split-files:
     if not os.path.exists('./splits/random_train.csv') or not os.path.exists('./splits/random_test.csv'):

@@ -1,6 +1,9 @@
 # 1: Bib
 import os
 import re
+import json
+import csv
+from pathlib import Path
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -65,14 +68,196 @@ class GazeDataset(Dataset):
         return self.images[idx], self.targets[idx]
 
 
+def normalize(in_path, out_path):
+
+    DATASET_ROOT = Path(in_path)
+
+    OUTPUT_DIR = Path(out_path)
+
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    IMAGES_DIR = OUTPUT_DIR / "images"
+
+    csv_path = OUTPUT_DIR / "norm_labels.csv"
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+
+        writer.writerow([
+            "image_name",
+            "x_norm",
+            "y_norm",
+            "subject_ID",
+            "screen_w",
+            "screen_h"
+        ])
+
+        total_images = 0
+        total_subjects = 0
+
+        # ======================================================
+        # Alle Subjekte durchlaufen
+        # ======================================================
+
+        for outer_subject_dir in sorted(DATASET_ROOT.iterdir()):
+
+            if not outer_subject_dir.is_dir():
+                continue
+
+            subject_id = outer_subject_dir.name
+
+            inner_subject_dir = (
+                outer_subject_dir / subject_id
+            )
+
+            if not inner_subject_dir.exists():
+                continue
+
+            # ==================================================
+            # Dateien laden
+            # ==================================================
+
+            frames_file = (
+                inner_subject_dir / "frames.json"
+            )
+
+            dotinfo_file = (
+                inner_subject_dir / "dotInfo.json"
+            )
+
+            frames_folder = (
+                inner_subject_dir / "frames"
+            )
+
+            screen_file = (
+                    inner_subject_dir / "screen.json"
+            )
+
+            # --------------------------------------------------
+            if not frames_file.exists():
+                print(f"Skipping {subject_id}: frames.json missing")
+                continue
+
+            if not dotinfo_file.exists():
+                print(f"Skipping {subject_id}: dotInfo.json missing")
+                continue
+
+            if not frames_folder.exists():
+                print(f"Skipping {subject_id}: frames folder missing")
+                continue
+
+            if not screen_file.exists():
+                print(f"Skipping {subject_id}: frames folder missing")
+                continue
+            # --------------------------------------------------
+
+            try:
+                with open(frames_file, "r", encoding="utf-8") as f:
+                    frame_names = json.load(f)
+
+                with open(dotinfo_file, "r", encoding="utf-8") as f:
+                    dot_info = json.load(f)
+
+                with open(screen_file, "r", encoding="utf-8") as f:
+                    screen_info = json.load(f)
+
+            except Exception as e:
+                print(f"Skipping {subject_id}: JSON read error --> {e}")
+
+            try:
+                x_values = dot_info["XPts"]
+                y_values = dot_info["YPts"]
+
+                h_values = screen_info["H"]
+                w_values = screen_info["W"]
+
+            except KeyError as e:
+                print(f"Skipping {subject_id}: missing key --> {e}")
+
+            if len(frame_names) != len(x_values):
+                print(
+                    f"ERROR in {subject_id}: "
+                    f"{len(frame_names)} frames but "
+                    f"{len(x_values)} labels"
+                )
+                continue
+
+            total_subjects += 1
+
+            # ==================================================
+            # Alle Frames bearbeiten
+            # ==================================================
+
+            for idx in range(len(frame_names)):
+
+                original_image_name = frame_names[idx]
+
+                x = x_values[idx]
+                y = y_values[idx]
+
+                screen_h = h_values[idx]
+                screen_w = w_values[idx]
+
+
+                # Normalisation:
+                x_norm = x / screen_w
+                y_norm = y / screen_h
+
+
+                source_image = (
+                    frames_folder /
+                    original_image_name
+                )
+
+                if not source_image.exists():
+                    print(
+                        f"Missing image: {source_image}"
+                    )
+                    continue
+
+
+                writer.writerow([
+                    source_image,
+                    x_norm,
+                    y_norm,
+                    subject_id,
+                    screen_w,
+                    screen_h
+                ])
+
+                total_images += 1
+
+
+    print()
+    print("=" * 50)
+    print(f"{'#'*10} Normalisation DONE {'#'*10}")
+    print("=" * 100)
+    print(f"Subjects processed : {total_subjects}")
+    print(f"Images processed   : {total_images}")
+    print(f"CSV saved to       : {csv_path}")
+
+
+
 # 3: func-diagonla-error:
 def find_screen_size():
+    # Checking for normalize-file (norm_labels.csv):
+    dataset_path = './dataset/images/'
+    if not os.path.exists('./dataset/norm_labels.csv'):
+
+        print(f"The file: 'norm_labels.csv' is maybe needed, but doesn't find!\n Try to create it ... \n")
+        normalize(dataset_path, "./dataset/")
+
+        if os.path.exists('./dataset/norm_labels.csv'):
+            print(f"Now can find the file: 'norm_labels.csv' !\n ")
+
     """Suche die Bildschirmbreite aus einer Datei mit screen_w und screen_h"""
     candidates = [
         # "norm_labels.py",
-        # "dataset/norm_labels.py",
-        # "norm_labels.csv",
-        "dataset/norm_labels.csv",
+        # "dataset/labels.csv",
+        "dataset/norm_labels.csv"
     ]
 
     for path in candidates:
@@ -111,7 +296,7 @@ def find_screen_size():
             if match:
                 return float(match.group(1))
 
-    raise ValueError("screen_w konnte nicht gefunden werden. Bitte Datei mit 'screen_w = ...' angeben.")
+    raise ValueError("screen_w konnte nicht gefunden werden. Bitte Datei mit 'screen_w' und 'screen_h' angeben.")
 
 
 def diagonal_errors(model, loader, device):
@@ -268,9 +453,17 @@ def main():
     )
 
     # 9: Training
-    # epochs = 10
+    epochs = 10
     # epochs = 2
-    epochs = 15
+    # epochs = 15
+    model_output = './models'
+    model_dir= Path(model_output)
+
+    if not os.path.exists(model_dir):
+        model_dir.mkdir(
+            parents=True,
+            exist_ok=True
+        )
 
     best_error, test_err_mean, test_err_max = None, None, None
 
@@ -317,29 +510,29 @@ def main():
 
         if best_error is None or test_rmse < best_error:
             best_error = test_rmse
-            torch.save(model.state_dict(), "best_model.path")
+            torch.save(model.state_dict(), "./models/best_model.path")
 
         print(
             f"\n[{datetime.now().strftime('%H:%M:%S')}] Epoch {epoch + 1}: "
-            f"{running_loss / len(train_loader):.4f} | "
+            f"Running_loss: {running_loss / len(train_loader):.3f} | "
             f"test_diag_error={test_diag_pct:.3f}% | "
             # f"train_diag_error={train_diag_pct:.3f}% | \n"
         )
 
-        torch.save(model.state_dict(), "last_model.path")
+        torch.save(model.state_dict(), "./models/last_model.path")
+
 
 
 if __name__ == "__main__":
     main()
 
+
+
+
+
+
+
 """
-# save the model:
-torch.save(
-    model.state_dict(),
-    "gaze_model.pth"
-)
-
-
 # Inference
 model.load_state_dict(
     torch.load(
