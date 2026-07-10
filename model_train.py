@@ -68,6 +68,7 @@ class GazeDataset(Dataset):
         return self.images[idx], self.targets[idx]
 
 
+# 3: Normalization:
 def normalize(in_path, out_path):
 
     DATASET_ROOT = Path(in_path)
@@ -241,7 +242,7 @@ def normalize(in_path, out_path):
 
 
 
-# 3: func-diagonla-error:
+# 4: func-Screen-size:
 def find_screen_size():
     # Checking for normalize-file (norm_labels.csv):
     dataset_path = './dataset/images/'
@@ -299,6 +300,7 @@ def find_screen_size():
     raise ValueError("screen_w konnte nicht gefunden werden. Bitte Datei mit 'screen_w' und 'screen_h' angeben.")
 
 
+# 5: func-Diagonal-Error:
 def diagonal_errors(model, loader, device):
     model.eval()
 
@@ -328,20 +330,23 @@ def diagonal_errors(model, loader, device):
 
 
 def main():
-    # 4: CSV laden
+
+    # 6: CSV laden
     df = pd.read_csv("dataset/labels.csv")
     df.head()
     # check:
     # print(df.shape)
 
-    # 5: check a image
+
+    # 7: check a image
     # row = df.iloc[0]
     # img = Image.open(row["image_name"])
     # plt.imshow(img)
     # plt.show()
     # print(row["x"], row["y"])
 
-    # 6: DataLoader
+
+    # 8: DataLoader
     # Transformationen:
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -391,8 +396,8 @@ def main():
         persistent_workers=True
     )
 
-    # 7: ResNet18 (Pretrainiertes Modell):
 
+    # 9: ResNet18 (Pretrainiertes Modell):
     # Load:
     model = resnet18(
         weights=ResNet18_Weights.DEFAULT
@@ -405,23 +410,20 @@ def main():
             512
         ),
         nn.ReLU(),
-
         nn.Linear(
             512,
             128
         ),
         nn.ReLU(),
-
         nn.Dropout(0.2),
-
         nn.Linear(
             128,
             2
         )
     )
 
-    # 8: GPU
 
+    # 10: GPU
     # check:
     device = torch.device(
         "cuda"
@@ -432,8 +434,8 @@ def main():
     # print(device)
     model.to(device)
 
-    # 8: Loss and Optimizer
 
+    # 11: Loss and Optimizer
     # for regression:
     # criterion = nn.MSELoss()
     criterion = nn.SmoothL1Loss()
@@ -452,10 +454,11 @@ def main():
         lr=1e-4
     )
 
-    # 9: Training
+
+    # 12: Training
     epochs = 10
     # epochs = 2
-    # epochs = 15
+
     model_output = './models'
     model_dir= Path(model_output)
 
@@ -505,8 +508,6 @@ def main():
         print(f"\ntest_error:")
         test_mae, test_rmse, test_diag_pct = diagonal_errors(model, test_loader, device)
 
-        # print(f"MAE : {test_mae:.4f}")
-        # print(f"RMSE: {test_rmse:.4f}")
 
         if best_error is None or test_rmse < best_error:
             best_error = test_rmse
