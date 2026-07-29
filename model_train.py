@@ -318,14 +318,20 @@ def diagonal_errors(model, loader, device):
     targets_all = np.concatenate(targets_list, axis=0)
     predictions = np.concatenate(preds_list, axis=0)
 
-    screen_w, screen_h = find_screen_size()
+    # screen_w, screen_h = find_screen_size()
+
     mae = mean_absolute_error(targets_all, predictions)
+
     rmse = np.sqrt(mean_squared_error(targets_all, predictions))
-    diagonal_error_pct = 100 * np.round(rmse / np.sqrt(2 * screen_w * screen_h), 3)
+
+    # diagonal_pixels = np.sqrt(screen_w**2 + screen_h**2)
+    # diagonal_error_pct = np.round(rmse / diagonal_pixels, 3) * 100
+
+    diagonal_error_pct = np.round(100 * (rmse / np.sqrt(2)), 5)
 
     print(f"MAE : {mae:.4f} \t RMSE: {rmse:.4f} ")
     # print(f"RMSE: {rmse:.4f}")
-    print(f"Diagonal-Error %: {diagonal_error_pct:.3f} %")
+    print(f"Diagonal-Error %: {diagonal_error_pct:.4f} %")
 
     return mae, rmse, diagonal_error_pct
 
@@ -352,13 +358,15 @@ def main():
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ColorJitter(
-            brightness=0.2,
-            contrast=0.2
+            brightness=0.3,
+            contrast=0.3,
+            saturation=0.2
         ),
-        # transforms.RandomAffine(
-        #     degrees=3,
-        #     translate=(0.02, 0.02)
-        # ),
+        transforms.RandomGrayscale(p=0.05),
+        transforms.GaussianBlur(
+            kernel_size=3,
+            sigma=(0.1, 1.5)
+        ),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
@@ -368,17 +376,24 @@ def main():
 
     # Dataset:
     train_dataset = GazeDataset(
-        "./splits/subject_train.csv",
-        transform, dataset_size=2000,
+        "./splits/norm_subject_train.csv",
+        transform, dataset_size=16000,
     )
 
     test_dataset = GazeDataset(
-        "./splits/subject_test.csv",
-        transform, dataset_size=500,
+        "./splits/norm_subject_test.csv",
+        transform, dataset_size=4000,
     )
 
-    # print(len(train_dataset))
-    # print(len(test_dataset))
+    # train_dataset = GazeDataset(
+    #     "./splits/norm_random_train.csv",
+    #     transform, dataset_size=2000,
+    # )
+
+    # test_dataset = GazeDataset(
+    #     "./splits/norm_random_test.csv",
+    #     transform, dataset_size=500,
+    # )
 
     # Loader:
     train_loader = DataLoader(
@@ -439,20 +454,39 @@ def main():
     # 11: Loss and Optimizer
     # for regression:
     # criterion = nn.MSELoss()
+    # criterion = nn.SmoothL1Loss()
+    #
+    # for param in model.parameters():
+    #     param.requires_grad = False
+    #
+    # # # Unfreeze the head
+    # for param in model.fc.parameters():
+    #     param.requires_grad = True
+    #
+    # # Optimizer:
+    # optimizer = torch.optim.Adam(
+    #     # model.parameters(),
+    #     model.fc.parameters(),
+    #     lr=1e-5
+    # )
+
+    # criterion = nn.MSELoss()
     criterion = nn.SmoothL1Loss()
 
     for param in model.parameters():
         param.requires_grad = False
 
-    # # Unfreeze the head
+    # Unfreeze the head
+    for param in model.layer4.parameters():
+        param.requires_grad = True
+
     for param in model.fc.parameters():
         param.requires_grad = True
 
-    # Optimizer:
-    optimizer = torch.optim.Adam(
-        # model.parameters(),
-        model.fc.parameters(),
-        lr=1e-5
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=1e-5,
+        weight_decay=1e-5
     )
 
 
@@ -461,7 +495,7 @@ def main():
     # epochs = 2
 
     model_output = './models'
-    model_dir= Path(model_output)
+    model_dir = Path(model_output)
 
     if not os.path.exists(model_dir):
         model_dir.mkdir(
@@ -469,7 +503,8 @@ def main():
             exist_ok=True
         )
 
-    best_error, test_err_mean, test_err_max = None, None, None
+    best_error = None
+    diag_test_error, diag_train_error = [], []
 
     for epoch in range(epochs):
 
@@ -502,13 +537,11 @@ def main():
 
         print(f"\ntrain_error:")
         train_mae, train_rmse, train_diag_pct = diagonal_errors(model, train_loader, device)
-
-        # print(f"MAE : {train_mae:.4f}")
-        # print(f"RMSE: {train_rmse:.4f}")
+        diag_train_error.append(np.round(train_diag_pct, 4))
 
         print(f"\ntest_error:")
         test_mae, test_rmse, test_diag_pct = diagonal_errors(model, test_loader, device)
-
+        diag_test_error.append(np.round(test_diag_pct, 4))
 
         if best_error is None or test_rmse < best_error:
             best_error = test_rmse
@@ -517,11 +550,43 @@ def main():
         print(
             f"\n[{datetime.now().strftime('%H:%M:%S')}] Epoch {epoch + 1}: "
             f"Running_loss: {running_loss / len(train_loader):.3f} | "
-            f"test_diag_error={test_diag_pct:.3f}% | "
-            f"train_diag_error={train_diag_pct:.3f}% | \n"
+            f"test_diag_error={test_diag_pct:.4f}% | "
+            f"train_diag_error={train_diag_pct:.4f}% | \n"
         )
 
         torch.save(model.state_dict(), "./models/last_model.path")
+
+    # print(f"\n\nDiagonal_train_error: {np.float64(diag_train_error)}")
+    # print(f"\n\nDiagonal_test_error: {np.float64(diag_test_error)}")
+
+    print(f"\n\n Diagonal-Train-Error: {np.float64(diag_train_error)}\n")
+    print(f" Diagonal-Test-Error: {np.float64(diag_test_error)}\n\n")
+
+    print(f" Diagonal-Train-Error-Max: {np.max(diag_train_error)} \t Diagonal-Train-Error-Min: {np.min(diag_train_error)}\t")
+    print(f" Diagonal-Train-Error-Ave: {np.round(np.mean(diag_train_error), 4)}\n")
+
+    print(f" Diagonal-Test-Error-Max: {np.max(diag_test_error)}\t Diagonal-Test-Error-Min: {np.min(diag_test_error)}\t ")
+    print(f" Diagonal-Test-Error-Ave: {np.round(np.mean(diag_test_error), 4)}\n")
+
+
+    # Curven:
+
+    epochs = range(1, len(diag_test_error) + 1)
+    # epochs = range(1, len(diag_train_error) + 1)
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(diag_train_error, label="Train", linewidth=2)
+    plt.plot(diag_test_error, label="Test", linewidth=2)
+
+    plt.title("Diagnostic Error über die Epochen")
+    plt.xlabel("Epoche")
+    plt.ylabel("Diagnostic Error (%)")
+    plt.grid(True)
+    plt.legend()
+
+    plt.show()
+
+    
 
 
 
