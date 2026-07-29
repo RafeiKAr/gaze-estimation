@@ -181,8 +181,8 @@ def normalize(in_path, out_path):
 
         writer.writerow([
             "image_name",
-            "x_norm",
-            "y_norm",
+            "x",
+            "y",
             "subject_ID",
             "screen_w",
             "screen_h"
@@ -296,8 +296,8 @@ def normalize(in_path, out_path):
 
 
                 # Normalisation:
-                x_norm = x / screen_w
-                y_norm = y / screen_h
+                x_norm = min(1, max(0, (x / screen_w)))
+                y_norm = min(1, max(0, (y / screen_h)))
 
 
                 source_image = (
@@ -501,32 +501,35 @@ def main():
 
     # Checking for file (labels.csv):
     if not os.path.exists('./dataset/labels.csv'):
-        print(f"The file: 'labels.csv' is necessary, but doesn't find!\n Try to create it ...  ")
+        print(f"\nThe file: 'labels.csv' is necessary, but doesn't find!\n Try to create it ...  ")
         reformat(dataset_path, "./dataset/")
         if os.path.exists('./dataset/labels.csv'):
             print(f"Now can find the file: 'labels.csv' !\n ")
 
-    # # Checking for normalize-file (norm_labels.csv):
-    # if not os.path.exists('./dataset/norm_labels.csv'):
-    #     submit = input(
-    #         f"The file: 'norm_labels.csv' is maybe needed, but doesn't find!\n Do I have to create it? (y/n)")
-    #     if submit.lower() == 'y':
-    #         normalize(dataset_path, "./dataset/")
-    #         if os.path.exists('./dataset/norm_labels.csv'):
-    #             print(f"Now can find the file: 'norm_labels.csv' !\n ")
+    # Checking for normalize-file (norm_labels.csv):
+    if not os.path.exists('./dataset/norm_labels.csv'):
+        print(f"\nThe file: 'norm_labels.csv' is necessary, but doesn't find!\n Try to create it ...  ")
+        normalize(dataset_path, "./dataset/")
+        # submit = input(
+        #     f"The file: 'norm_labels.csv' is maybe needed, but doesn't find!\n Do I have to create it? (y/n)")
+        # if submit.lower() == 'y':
+        #     normalize(dataset_path, "./dataset/")
+        #     if os.path.exists('./dataset/norm_labels.csv'):
+        #         print(f"Now can find the file: 'norm_labels.csv' !\n ")
 
-    csv_path = './dataset/labels.csv'
+    # csv_path1 = './dataset/labels.csv'
+    # csv_path2 = './dataset/norm_labels.csv'
 
-    # while(True):
-    #     confirm_split = input("Create split-files for labels or norm_labels? (l/n):")
-    #     if confirm_split.lower() == 'l':
-    #         csv_path = './dataset/labels.csv'
-    #         break
-    #     elif confirm_split.lower() == 'n':
-    #         csv_path = './dataset/norm_labels.csv'
-    #         break
-    #     else:
-    #         raise ValueError("Invalid input. Please enter 'l' or 'n'.")
+    while True:
+        confirm_split = input("\n\nCreate split-files for 'labels.csv' or 'norm_labels.csv'? (l/n):")
+        if confirm_split.lower() == 'l':
+            csv_path = './dataset/labels.csv'
+            break
+        elif confirm_split.lower() == 'n':
+            csv_path = './dataset/norm_labels.csv'
+            break
+        else:
+            raise ValueError("Invalid input. Please enter 'l' or 'n'.")
 
     # Checking for random-split-files:
     if not os.path.exists('./splits/random_train.csv') or not os.path.exists('./splits/random_test.csv'):
@@ -540,13 +543,14 @@ def main():
         split_test = input("\n Do I have to test SPLIT?(y/n)")
         print("\n")
         if split_test == 'y':
-            if confirm_split.lower() == 'n':
+            if split_test.lower() == 'n':
                 train_path, test_path = "./splits/norm_subject_train.csv", "./splits/norm_subject_test.csv"
+                check_split(train_path, test_path)
 
-            elif confirm_split.lower() == 'l':
+            elif split_test.lower() == 'l':
                 train_path, test_path = "./splits/subject_train.csv", "./splits/subject_test.csv"
+                check_split(train_path, test_path)
 
-            check_split(train_path, test_path)
 
 
 if __name__ == "__main__":

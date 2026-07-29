@@ -204,8 +204,9 @@ def normalize(in_path, out_path):
 
 
                 # Normalisation:
-                x_norm = x / screen_w
-                y_norm = y / screen_h
+                x_norm = min(1, max(0, (x / screen_w)))
+                y_norm = min(1, max(0, (y / screen_h)))
+
 
 
                 source_image = (
@@ -354,10 +355,10 @@ def main():
             brightness=0.2,
             contrast=0.2
         ),
-        transforms.RandomAffine(
-            degrees=3,
-            translate=(0.02, 0.02)
-        ),
+        # transforms.RandomAffine(
+        #     degrees=3,
+        #     translate=(0.02, 0.02)
+        # ),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
@@ -451,7 +452,7 @@ def main():
     optimizer = torch.optim.Adam(
         # model.parameters(),
         model.fc.parameters(),
-        lr=1e-4
+        lr=1e-5
     )
 
 
@@ -499,8 +500,8 @@ def main():
                 loss=loss.item()
             )
 
-        # print(f"\ntrain_error:")
-        # train_mae, train_rmse, train_diag_pct = diagonal_errors(model, train_loader, device)
+        print(f"\ntrain_error:")
+        train_mae, train_rmse, train_diag_pct = diagonal_errors(model, train_loader, device)
 
         # print(f"MAE : {train_mae:.4f}")
         # print(f"RMSE: {train_rmse:.4f}")
@@ -517,7 +518,7 @@ def main():
             f"\n[{datetime.now().strftime('%H:%M:%S')}] Epoch {epoch + 1}: "
             f"Running_loss: {running_loss / len(train_loader):.3f} | "
             f"test_diag_error={test_diag_pct:.3f}% | "
-            # f"train_diag_error={train_diag_pct:.3f}% | \n"
+            f"train_diag_error={train_diag_pct:.3f}% | \n"
         )
 
         torch.save(model.state_dict(), "./models/last_model.path")
