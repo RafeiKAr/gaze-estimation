@@ -29,6 +29,8 @@ from torchvision.models import (
 )
 from datetime import datetime
 
+from torch.utils.tensorboard import SummaryWriter
+
 
 # 2: Dataset Class: transfer CSV in PyTorch.
 class GazeDataset(Dataset):
@@ -105,9 +107,16 @@ def diagonal_errors(model, loader, device):
 
 def main():
 
+    # 3: Hyperparameter
+    def_dataset_size = [1000, 200]
+    # def_dataset_size = [10000, 2000]
+    
+    optimizer_name = "AdamW"
+    batch_Size = 64
+    epochs = 10
     learning_rate = 1e-5
-    def_dataset_size = [10000, 2000]
-    # def_dataset_size = [1000, 200]
+    weight_Decay = 1e-4
+    
 
     # 6: CSV laden
     df = pd.read_csv("dataset/labels.csv")
@@ -170,7 +179,7 @@ def main():
     # Loader:
     train_loader = DataLoader(
         train_dataset,
-        batch_size=64,
+        batch_size=batch_Size,
         shuffle=True,
         num_workers=8,
         persistent_workers=True
@@ -178,7 +187,7 @@ def main():
 
     test_loader = DataLoader(
         test_dataset,
-        batch_size=64,
+        batch_size=batch_Size,
         shuffle=False,
         num_workers=8,
         persistent_workers=True
@@ -190,6 +199,8 @@ def main():
     model = resnet18(
         weights=ResNet18_Weights.DEFAULT
     )
+
+    model_name = model.__class__.__name__
 
     # last layer Original: 512 → 1000, but we need: 512 → 2 (for x, y)
     model.fc = nn.Sequential(
@@ -240,12 +251,12 @@ def main():
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=learning_rate,
-        weight_decay=1e-5
+        weight_decay=weight_Decay
     )
 
 
     # 12: Training
-    epochs = 10
+    epochs = epochs
     # epochs = 2
 
     model_output = './models'
@@ -261,6 +272,9 @@ def main():
     diag_test_error, diag_train_error = [], []
 
     train_start = time.perf_counter()
+    writer = SummaryWriter(
+        log_dir=os.path.join("runs", f"{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    )
 
     for epoch in range(epochs):
 
@@ -301,6 +315,10 @@ def main():
         test_mae, test_rmse, test_diag_pct = diagonal_errors(model, test_loader, device)
         diag_test_error.append(np.round(test_diag_pct, 4))
 
+        writer.add_scalar("train_error/epoch", float(f"{train_diag_pct:.4f}"), epoch + 1)
+        writer.add_scalar("test_error/epoch", float(f"{test_diag_pct:.4f}"), epoch + 1)
+        writer.add_scalar("train_loss/epoch", running_loss / len(train_loader), epoch + 1)
+
         if best_error is None or test_rmse < best_error:
             best_error = test_rmse
             torch.save(model.state_dict(), "./models/best_model.path")
@@ -318,12 +336,37 @@ def main():
 
 
     train_end = time.perf_counter()
+    end_time = time.perf_counter()
+
+    writer.add_hparams(
+        {
+            "dataset": def_dataset,
+            "dataset_size": str(def_dataset_size),
+            "optimizer": optimizer_name,
+            "learning_rate": float(learning_rate),
+            "weight_decay": float(weight_Decay),
+            "batch_size": int(batch_Size),
+            "epochs": int(epochs)
+        },
+        {
+            "hparam/test_diag_error": float(diag_test_error[-1]),
+            "hparam/train_diag_error": float(diag_train_error[-1]),
+            "hparam/total_running_time_min": float((end_time - start_time) / 60),
+            "hparam/train_running_time_min": float((train_end - train_start) / 60)
+        }
+    )
+
+    writer.flush()
+
+
+
+    # train_end = time.perf_counter()
     elapsed_running_time = train_end - train_start
     print(f"\ntotll running-tiems (s): {elapsed_running_time:.2f} Sekunden")
     print(f"totll running-tiems (min): {elapsed_running_time / 60:.2f} Minuten\n")
 
 
-    end_time = time.perf_counter()
+    # end_time = time.perf_counter()
     elapsed_time = end_time - start_time
     print(f"\nGesamte Laufzeit: {elapsed_time:.2f} Sekunden")
     print(f"Gesamte Laufzeit: {elapsed_time / 60:.2f} Minuten\n")
@@ -351,7 +394,13 @@ def main():
     plt.plot(diag_train_error, label="Train", linewidth=2)
     plt.plot(diag_test_error, label="Test", linewidth=2)
 
-    plt.title(f"{def_dataset}(1%(train: {def_dataset_size[0]}, test: {def_dataset_size[1]})) |"
+    plt.plot(epochs, [27.245] * len(epochs),
+         label="Constant Error", linewidth=1)
+
+    plt.plot(epochs, [38.939] * len(epochs),
+         label="Random Error", linewidth=1)
+
+    plt.title(f"{def_dataset} | (train: {def_dataset_size[0]}, test: {def_dataset_size[1]}) |"
               f" lr = {learning_rate} | {elapsed_running_time / 60:.2f} Minuten"
               )
 
@@ -371,6 +420,8 @@ def main():
     )
 
     plt.show()
+
+    writer.close()
 
     
 
