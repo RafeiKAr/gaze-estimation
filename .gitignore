@@ -1,37 +1,95 @@
 
-# datasets
-dataset/images/**
+# =========================
+# VS Code
+# =========================
+.vscode/
 
 
-# python
+# =========================
+# Kaggle credentials
+# =========================
+kaggle.json
+
+
+# =========================
+# Raw videos
+# =========================
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+
+# =========================
+# Personalization dataset
+# =========================
+personalization/*/images/
+personalization/*/*.mp4
+personalization/*/*.avi
+
+
+# =========================
+# Dataset images
+# =========================
+dataset/images/
+
+
+# =========================
+# Image files (optional)
+# =========================
+# Uncomment if you want to ignore ALL images
+# *.jpg
+# *.jpeg
+# *.png
+# *.bmp
+
+
+# =========================
+# Python cache
+# =========================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
-# notebook checkpoints
+
+# =========================
+# Virtual environments
+# =========================
+venv/
+.venv/
+env/
+
+
+# =========================
+# IDE
+# =========================
+.idea/
+
+
+# =========================
+# Jupyter
+# =========================
 .ipynb_checkpoints/
 
-# models
-models/**
+
+# =========================
+# Model checkpoints
+# =========================
 *.pth
 *.pt
-*.path
+*.ckpt
 
-# logs
+
+# =========================
+# TensorBoard
+# =========================
+runs/
 logs/
 wandb/
 
-# vscode
-.vscode/
 
-# mac
+# =========================
+# OS files
+# =========================
 .DS_Store
-
-# kaggle
-kaggle.json
-
-# env
-venv/
-.env
-Venv/
-
-.idea/
+Thumbs.db

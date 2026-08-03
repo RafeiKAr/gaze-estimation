@@ -8,7 +8,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-record_name = str(input("Please enter a name for the record: "))
+record_number = str(input("Please enter a number for the record: "))
+diagram_name = str(input("Please enter a name for the diagram: "))
 
 # -----------------------
 # Kamera initialisierung
@@ -36,13 +37,13 @@ info = pygame.display.Info()
 # print(f"Info über Bildschirm: {info}")
 
 # WIDTH, HEIGHT = info.current_w, info.current_h
-WIDTH = info.current_w - 80
+WIDTH = info.current_w - 10
 HEIGHT = info.current_h - 80
 # WIDTH, HEIGHT = 800, 600
 
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption(f"Random-Startpoint with Recording: {record_name}")
+pygame.display.set_caption(f"Random-Startpoint with Recording: {record_number}")
 
 # Uhr für konstante framerate
 clock = pygame.time.Clock()
@@ -74,7 +75,7 @@ frame_count = 0
 # ----------------------------
 # Datei für Positionsdaten
 # ----------------------------
-position_file = open(f"{record_name}_position.txt", "w")
+position_file = open(f"{record_number}_position.txt", "w")
 position_file.write("frame, x, y\n")
 
 
@@ -100,7 +101,7 @@ while running:
                 # fourcc = cv2.VideoWriter_fourcc(*'XVID')
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 video_writer = cv2.VideoWriter(
-                    f'{record_name}_video.mp4',
+                    f'{record_number}_{diagram_name}_video.mp4',
                     fourcc,
                     30,
                     (frame_width, frame_height),
@@ -155,7 +156,7 @@ frames = []
 x_positions = []
 y_positions = []
 
-with open(f"{record_name}_position.txt", "r") as file:
+with open(f"{record_number}_position.txt", "r") as file:
     lines = file.readlines()
 
     # try:
@@ -197,7 +198,7 @@ plt.title("Trajektorie des Punktes (sekündlich)")
 plt.legend()
 plt.axis("equal")
 plt.grid(True)
-plt.savefig(f"{record_name}_trajectory.png")
+plt.savefig(f"{record_number}_{diagram_name}_trajectory.png")
 plt.close()
 
 if video_writer is not None:
