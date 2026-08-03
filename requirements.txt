@@ -1,5 +1,4 @@
 
-
 # Core
 numpy
 pandas
@@ -14,14 +13,18 @@ matplotlib
 scikit-learn
 torch
 torchvision
+tensorboard
 
 # Utilities
 tqdm
+Pillow
 
 # Notebook
 jupyter
 
 # Datasets
 kaggle>=1.7.0
+
+
 
 

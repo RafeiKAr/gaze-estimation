@@ -5,6 +5,7 @@ import time
 start_time = time.perf_counter()
 
 import os
+# os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import re
 import json
 import csv
@@ -108,18 +109,22 @@ def diagonal_errors(model, loader, device):
 def main():
 
     # 3: Hyperparameter
-    def_dataset_size = [1000, 200]
-    # def_dataset_size = [10000, 2000]
+    # def_dataset_size = [1000, 200]
+    def_dataset_size = [10000, 2000]
     
     optimizer_name = "AdamW"
     batch_Size = 64
+
     epochs = 10
-    learning_rate = 1e-5
+    # epochs = 2
+
+    learning_rate = 1e-4
     weight_Decay = 1e-4
     
 
     # 6: CSV laden
-    df = pd.read_csv("dataset/labels.csv")
+    # df = pd.read_csv("dataset/labels.csv")
+    df = pd.read_csv("dataset/norm_labels.csv")
     df.head()
     # check:
     # print(df.shape)
@@ -153,12 +158,12 @@ def main():
     # Dataset:
 
     # def_dataset = 'norm_subject'
-
+    #
     # train_dataset = GazeDataset(
     #     "./splits/norm_subject_train.csv",
     #     transform, dataset_size=def_dataset_size[0],
     # )
-
+    #
     # test_dataset = GazeDataset(
     #     "./splits/norm_subject_test.csv",
     #     transform, dataset_size=def_dataset_size[1],
@@ -257,7 +262,6 @@ def main():
 
     # 12: Training
     epochs = epochs
-    # epochs = 2
 
     model_output = './models'
     model_dir = Path(model_output)
@@ -272,11 +276,15 @@ def main():
     diag_test_error, diag_train_error = [], []
 
     train_start = time.perf_counter()
+
     writer = SummaryWriter(
-        log_dir=os.path.join("runs", f"{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        log_dir=os.path.join("runs", f"{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+                                     f"{def_dataset}_{def_dataset_size[0]}-{def_dataset_size[1]}")
     )
 
     for epoch in range(epochs):
+
+        epoch_start = time.perf_counter()
 
         model.train()
         running_loss = 0
@@ -315,24 +323,38 @@ def main():
         test_mae, test_rmse, test_diag_pct = diagonal_errors(model, test_loader, device)
         diag_test_error.append(np.round(test_diag_pct, 4))
 
-        writer.add_scalar("train_error/epoch", float(f"{train_diag_pct:.4f}"), epoch + 1)
-        writer.add_scalar("test_error/epoch", float(f"{test_diag_pct:.4f}"), epoch + 1)
-        writer.add_scalar("train_loss/epoch", running_loss / len(train_loader), epoch + 1)
+        # writer.add_scalar("train_error/epoch", float(f"{train_diag_pct:.4f}"), epoch + 1)
+        # writer.add_scalar("test_error/epoch", float(f"{test_diag_pct:.4f}"), epoch + 1)
+        # writer.add_scalar("train_loss/epoch", running_loss / len(train_loader), epoch + 1)
+        writer.add_scalars(
+            main_tag="Diagnostic Error",
+            tag_scalar_dict={
+                "Train": f"{train_diag_pct:.4f}",
+                "Test": f"{test_diag_pct:.4f}",
+                "Constant": 27.69,
+                "Random": 45.53
+            },
+            global_step=epoch + 1
+        )
+        writer.flush()
 
         if best_error is None or test_rmse < best_error:
             best_error = test_rmse
-            torch.save(model.state_dict(), "./models/best_model.path")
+            torch.save(model.state_dict(),
+                    f"./models/{model_name}_best-model_{def_dataset}_{def_dataset_size[0]}-{def_dataset_size[1]}.path")
 
         epoch_end = time.perf_counter()
 
+
         print(
-            f"\n[{datetime.now().strftime('%H:%M:%S')}] Epoch {epoch + 1}: "
+            f"\n[{datetime.now().strftime('%H:%M:%S')}] Epoch {epoch + 1}: {epoch_end - epoch_start:.2f} Sekunden | "
             f"Running_loss: {running_loss / len(train_loader):.3f} | "
             f"test_diag_error={test_diag_pct:.4f}% | "
             f"train_diag_error={train_diag_pct:.4f}% | \n"
         )
 
-        torch.save(model.state_dict(), "./models/last_model.path")
+        torch.save(model.state_dict(),
+                   f"./models/{model_name}_last-model_{def_dataset}_{def_dataset_size[0]}-{def_dataset_size[1]}.path")
 
 
     train_end = time.perf_counter()
@@ -345,8 +367,8 @@ def main():
             "optimizer": optimizer_name,
             "learning_rate": float(learning_rate),
             "weight_decay": float(weight_Decay),
-            "batch_size": int(batch_Size),
-            "epochs": int(epochs)
+            "batch_size": batch_Size,
+            "epochs": epochs
         },
         {
             "hparam/test_diag_error": float(diag_test_error[-1]),
@@ -354,6 +376,13 @@ def main():
             "hparam/total_running_time_min": float((end_time - start_time) / 60),
             "hparam/train_running_time_min": float((train_end - train_start) / 60)
         }
+    )
+
+    writer.add_text(
+        tag=f"Train-Error & Test-Error for {epochs} Epochs",
+        text_string=f"Train-Error: {np.float64(diag_train_error)}\n"
+                    f"Test-Error: {np.float64(diag_test_error)}",
+        global_step=0
     )
 
     writer.flush()
@@ -385,9 +414,9 @@ def main():
     # print(f" Diagonal-Test-Error-Ave: {np.mean(diag_test_error)}\n")
 
     # Curven:
-
-    epochs = range(1, len(diag_test_error) + 1)
+    epochs = range(0, len(diag_test_error) + 1)
     # epochs = range(1, len(diag_train_error) + 1)
+
 
     plt.figure(figsize=(8, 5))
 
