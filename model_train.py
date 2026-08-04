@@ -109,16 +109,18 @@ def diagonal_errors(model, loader, device):
 def main():
 
     # 3: Hyperparameter
-    # def_dataset_size = [1000, 200]
-    def_dataset_size = [10000, 2000]
+    def_dataset_size = [1000, 200]
+    # def_dataset_size = [10000, 2000]
     
     optimizer_name = "AdamW"
     batch_Size = 64
 
+
     epochs = 10
     # epochs = 2
 
-    learning_rate = 1e-4
+    # learning_rate = 1e-4
+    learning_rate = 1e-5
     weight_Decay = 1e-4
     
 
@@ -157,29 +159,29 @@ def main():
 
     # Dataset:
 
-    # def_dataset = 'norm_subject'
-    #
-    # train_dataset = GazeDataset(
-    #     "./splits/norm_subject_train.csv",
-    #     transform, dataset_size=def_dataset_size[0],
-    # )
-    #
-    # test_dataset = GazeDataset(
-    #     "./splits/norm_subject_test.csv",
-    #     transform, dataset_size=def_dataset_size[1],
-    # )
-
-    def_dataset = 'norm_random'
+    def_dataset = 'norm_subject'
 
     train_dataset = GazeDataset(
-        "./splits/norm_random_train.csv",
+        "./splits/norm_subject_train.csv",
         transform, dataset_size=def_dataset_size[0],
     )
 
     test_dataset = GazeDataset(
-        "./splits/norm_random_test.csv",
+        "./splits/norm_subject_test.csv",
         transform, dataset_size=def_dataset_size[1],
     )
+
+    # def_dataset = 'norm_random'
+    #
+    # train_dataset = GazeDataset(
+    #     "./splits/norm_random_train.csv",
+    #     transform, dataset_size=def_dataset_size[0],
+    # )
+    #
+    # test_dataset = GazeDataset(
+    #     "./splits/norm_random_test.csv",
+    #     transform, dataset_size=def_dataset_size[1],
+    # )
 
     # Loader:
     train_loader = DataLoader(
@@ -341,7 +343,7 @@ def main():
         if best_error is None or test_rmse < best_error:
             best_error = test_rmse
             torch.save(model.state_dict(),
-                    f"./models/{model_name}_best-model_{def_dataset}_{def_dataset_size[0]}-{def_dataset_size[1]}.path")
+                    f"./models/{model_name}_optim-model_{def_dataset}_{def_dataset_size[0]}-{def_dataset_size[1]}.path")
 
         epoch_end = time.perf_counter()
 
@@ -354,7 +356,7 @@ def main():
         )
 
         torch.save(model.state_dict(),
-                   f"./models/{model_name}_last-model_{def_dataset}_{def_dataset_size[0]}-{def_dataset_size[1]}.path")
+                   f"./models/{model_name}_last-optim-model_{def_dataset}_{def_dataset_size[0]}-{def_dataset_size[1]}.path")
 
 
     train_end = time.perf_counter()

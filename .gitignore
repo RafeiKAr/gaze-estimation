@@ -76,6 +76,7 @@ env/
 # Model checkpoints
 # =========================
 *.pth
+*.path
 *.pt
 *.ckpt
 
