@@ -109,13 +109,13 @@ for i in range(len(text_files)):
 
 
             rows.append({
-                "image_name": filename,
+                "frame": filename,
                 "x": max(0, float(f"{(labels.loc[frame_id, "x"]):.6f}")),
                 "y": max(0, float(f"{(labels.loc[frame_id, "y"]):.6f}"))
             })
 
             norm_rows.append({
-                "image_name": filename,
+                "frame": filename,
                 "x": min(max(0, float(f"{(labels.loc[frame_id, "x"] / x_max):.6f}")), 1),
                 "y": min(max(0, float(f"{(labels.loc[frame_id, "y"] / y_max):.6f}")), 1)
             })
