@@ -21,7 +21,7 @@ if not cap.isOpened():
 frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-print(f"Width: {frame_width}, \t Height: {frame_height}\n")
+# print(f"Width: {frame_width}, \t Height: {frame_height}\n")
 
 video_writer = None
 recording = False
@@ -44,6 +44,7 @@ HEIGHT = info.current_h - 80
 # WIDTH, HEIGHT = 800, 600
 print(f"Width_screen: {WIDTH}, \t Height_screen: {HEIGHT}\n")
 # 1430 and 880 (1440 , 960)
+# Ubuntu (1910, 1000)
 
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
