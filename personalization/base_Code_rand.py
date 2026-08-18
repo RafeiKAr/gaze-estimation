@@ -20,8 +20,11 @@ if not cap.isOpened():
 
 frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+camera_fps = cap.get(cv2.CAP_PROP_FPS)
 
-print(f"Width: {frame_width}, \t Height: {frame_height}\n")
+print(f"Camera_Width:   {frame_width}")
+print(f"Camera_Height:  {frame_height}")
+print(f"Camera_FPS:     {camera_fps}")
 
 video_writer = None
 recording = False
