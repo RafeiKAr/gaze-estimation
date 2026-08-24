@@ -55,7 +55,7 @@ pygame.display.set_caption(f"Random-Startpoint with Recording: {record_number}")
 
 # Uhr für konstante framerate
 clock = pygame.time.Clock()
-FPS = 60
+FPS = 30
 
 # --------------------------------
 # Punkt-Eigenschaften
