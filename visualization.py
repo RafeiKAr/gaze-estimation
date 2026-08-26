@@ -143,3 +143,4 @@ if __name__ == "__main__":
 
 
 # run: python -m visualization --input results/baseline_predictions.csv
+# run: python -m visualization --input results/personal/predictions_10.csv
