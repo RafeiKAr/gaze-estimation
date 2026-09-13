@@ -14,8 +14,8 @@ def generate_random_start_position(
     width,
     height,
     radius,
-    corner_probability=0.60,
-    corner_size=0.15
+    corner_probability=0.80,
+    corner_size=0.01
 ):
 
     # --------------------------------------------------
@@ -262,7 +262,7 @@ while running:
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
                 video_writer = cv2.VideoWriter(
-                    f'{record_number}_{diagram_name}_video.mp4',
+                    f'{record_number}_video.mp4',
                     fourcc,
                     FPS,
                     (frame_width, frame_height),
@@ -271,7 +271,7 @@ while running:
                 # fourcc = cv2.VideoWriter_fourcc(*'XVID')
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 video_writer = cv2.VideoWriter(
-                    f'{record_number}_{diagram_name}_video.mp4',
+                    f'{record_number}_video.mp4',
                     fourcc,
                     FPS,
                     (frame_width, frame_height),
