@@ -1,17 +1,3 @@
-every 2 sec:
-Ari
-mit Brille(with glasses)
-hell + background hell
-Ubuntu(1870 , 1000)
-
-corner_probability=0.80,
-corner_size=0.01
-
-
-
-
-######################################################################
-
 Personalization Session Metadata
 =====================================
 Session ID:          19
@@ -30,7 +16,7 @@ Protocol per Segment (5.0s):
      - Point remains STATIONARY
      - User: Find and fixate the point
      - Phase label in position.txt: "wait"
-
+  
   2. MOVE phase (4.5s, 135 frames):
      - Point moves at constant velocity (speed=10 px/frame)
      - Random initial direction
@@ -49,11 +35,11 @@ Controls During Recording:
   - 'q' key: QUIT (stops recording, saves files)
   - ESC key: QUIT (from camera window)
 
-Output Files (in 18):
-  - 18_video.mp4      : Webcam recording
-  - 18_position.txt   : Frame-level positions (segment_id, frame, x, y, phase)
-  - 18_subject.txt    : This metadata file
-  - 18_trajectory.png : Trajectory plot (1 point per second)
+Output Files (in ./personalization/19/):
+  - 19_video.mp4      : Webcam recording
+  - 19_position.txt   : Frame-level positions (segment_id, frame, x, y, phase)
+  - 19_subject.txt    : This metadata file
+  - 19_trajectory.png : Trajectory plot (1 point per second)
 
 Note: norm_labels.csv is generated separately from position.txt + video frames
       using the normalization pipeline (screen.json with W/H per frame).
