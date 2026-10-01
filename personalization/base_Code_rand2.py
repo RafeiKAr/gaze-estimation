@@ -126,7 +126,7 @@ def main():
     clock = pygame.time.Clock()
     
     # ----- Output Directory -----
-    out_dir = Path(f"./personalization/{record_number}")
+    out_dir = Path(f"./{record_number}")
     out_dir.mkdir(parents=True, exist_ok=True)
     
     # ----- Video Writer -----

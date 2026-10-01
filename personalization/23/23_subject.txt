@@ -1,7 +1,7 @@
 Personalization Session Metadata
 =====================================
-Session ID:          19
-Date/Time:           2026-09-30 16:32:29
+Session ID:          23
+Date/Time:           2026-10-01 18:03:45
 Recording Duration:  120 seconds (3600 frames @ 30 FPS)
 Expected Segments:   24 (each 5.0s = 0.5s wait + 4.5s move)
 
@@ -35,11 +35,11 @@ Controls During Recording:
   - 'q' key: QUIT (stops recording, saves files)
   - ESC key: QUIT (from camera window)
 
-Output Files (in ./personalization/19/):
-  - 19_video.mp4      : Webcam recording
-  - 19_position.txt   : Frame-level positions (segment_id, frame, x, y, phase)
-  - 19_subject.txt    : This metadata file
-  - 19_trajectory.png : Trajectory plot (1 point per second)
+Output Files (in ./personalization/23/):
+  - 23_video.mp4      : Webcam recording
+  - 23_position.txt   : Frame-level positions (segment_id, frame, x, y, phase)
+  - 23_subject.txt    : This metadata file
+  - 23_trajectory.png : Trajectory plot (1 point per second)
 
 Note: norm_labels.csv is generated separately from position.txt + video frames
       using the normalization pipeline (screen.json with W/H per frame).
@@ -49,8 +49,8 @@ every 5 sec:
 120 sec
 Ari
 mit Brille(with glasses)
-hell + background clear
+hell + background noisy
 Ubuntu(1870 , 1000)
 
-corner_probability=0.90,
+corner_probability=0.90
 corner_size=0.01
