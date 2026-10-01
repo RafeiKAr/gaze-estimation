@@ -141,12 +141,12 @@ def main():
     
     # ----- Position Log File -----
     pos_path = out_dir / f"{record_number}_position.txt"
-    pos_file = open(pos_path, "w")
+    pos_file = open(pos_path, "w", encoding="utf-8")
     pos_file.write("segment_id,frame,x,y,phase\n")
     
     # ----- Subject Metadata File -----
     subject_path = out_dir / f"{record_number}_subject.txt"
-    subject_file = open(subject_path, "w")
+    subject_file = open(subject_path, "w", encoding="utf-8")
     subject_file.write(f"""Personalization Session Metadata
 =====================================
 Session ID:          {record_number}
@@ -266,12 +266,12 @@ Note: norm_labels.csv is generated separately from position.txt + video frames
                     angle = random.uniform(0, 2 * math.pi)
                     vx = SPEED * math.cos(angle)
                     vy = SPEED * math.sin(angle)
-                    print(f"  [Segment {segment_id+1}] JUMP → WAIT at ({x:.1f}, {y:.1f})")
+                    print(f"  [Segment {segment_id + 1}] JUMP → WAIT at ({x:.1f}, {y:.1f})")
             
             elif segment_frame == WAIT_FRAMES:
                 # WAIT → MOVE transition
                 phase = "move"
-                print(f"  [Segment {segment_id+1}] WAIT → MOVE")
+                print(f"  [Segment {segment_id + 1}] WAIT → MOVE")
             
             # Movement only in MOVE phase
             if phase == "move":
