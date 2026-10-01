@@ -122,8 +122,8 @@ def main():
     HEIGHT = info.current_h - 80
 
     # Windows:
-    # WIDTH = info.current_w - 20
-    # HEIGHT = info.current_h - 100
+    # WIDTH = info.current_w - 10
+    # HEIGHT = info.current_h - 80
     print(f"Screen: {WIDTH}×{HEIGHT}")
     
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
