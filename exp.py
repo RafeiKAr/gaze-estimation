@@ -33,18 +33,33 @@ import torch
 from dataset import build_dataloaders, build_embedding_dataloaders, load_normalized_targets
 from model import build_frozen_backbone, build_head, build_model, confidence_interval, train_model
 
+# DEFAULT_CONFIG = {
+#     "split_type": "norm_random",
+#     "train_size": 1000,
+#     "test_size": 200,
+#     "batch_size": 32,
+#     "learning_rate": 1e-4,
+#     "weight_decay": 1e-5,
+#     "activation": "Sigmoid",
+#     "trainable_layers": "fc_only",
+#     "loss": "standard",
+#     "epochs": 500,
+#     "patience": 3,
+# }
+
 DEFAULT_CONFIG = {
-    "split_type": "norm_random",
-    "train_size": 1000,
-    "test_size": 200,
     "batch_size": 32,
-    "learning_rate": 1e-4,
-    "weight_decay": 1e-5,
-    "activation": "Sigmoid",
-    "trainable_layers": "fc_only",
-    "loss": "standard",
+    "learning_rate": 1e-4,              # wird beim Sweep überschrieben
     "epochs": 500,
     "patience": 3,
+    "weight_decay": 1e-5,
+    "trainable_layers": "fc_only",      # ← hier dein Wert
+    "activation": "Sigmoid",            # ← hier dein Wert
+    "loss": "standard",                 # ← hier dein Wert
+    "train_size": 1000,                 # ← hier dein Wert
+    "test_size": 200,                   # ← hier dein Wert
+    "split_type": "norm_subject",       # ← hier dein Wert
+    "num_workers": 0,
 }
 
 CONFIDENCE = 0.98
