@@ -24,6 +24,7 @@ kaggle.json
 # Personalization dataset
 # =========================
 personalization/*/images/
+personalization/*/images2/
 personalization/*/*.mp4
 personalization/*/*.avi
 
