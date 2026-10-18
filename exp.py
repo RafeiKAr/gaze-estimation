@@ -25,6 +25,7 @@ numbers will differ slightly from results.tex even though the methodology
 
 import argparse
 import json
+
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +33,8 @@ import torch
 
 from dataset import build_dataloaders, build_embedding_dataloaders, load_normalized_targets
 from model import build_frozen_backbone, build_head, build_model, confidence_interval, train_model
+
+# from utils import count_parameters # <-- NEU: Importiere deine Funktion
 
 # DEFAULT_CONFIG = {
 #     "split_type": "norm_random",
@@ -46,6 +49,7 @@ from model import build_frozen_backbone, build_head, build_model, confidence_int
 #     "epochs": 500,
 #     "patience": 3,
 # }
+
 
 DEFAULT_CONFIG = {
     "batch_size": 32,
@@ -194,7 +198,11 @@ def build_experiments(repeats, base_config, device, use_embeddings=True):
         ),
         "trainable_layers": lambda: run_sweep(
             "trainable_layers",
-            {mode: {"trainable_layers": mode} for mode in ("fc_only", "fc_layer4")},
+            {
+                "fc_only": {"trainable_layers": "fc_only"},
+                "fc_layer4": {"trainable_layers": "fc_layer4"},
+                # "fc_resnet": {"trainable_layers": "fc_resnet", "use_embeddings": False},
+            },
             repeats,
             base_config,
             device,

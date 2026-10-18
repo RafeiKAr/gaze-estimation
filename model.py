@@ -33,6 +33,7 @@ ACTIVATIONS = {
 }
 
 TRAINABLE_LAYER_MODES = ("fc_only", "fc_layer4")
+# TRAINABLE_LAYER_MODES = ("fc_only", "fc_layer4", "fc_resnet")
 
 # Dimensionality of the ResNet18 feature vector (its avgpool+flatten output,
 # i.e. what a frozen backbone's forward pass produces once model.fc is
@@ -101,6 +102,14 @@ def set_trainable_layers(model, mode):
     if mode == "fc_layer4":
         for param in model.layer4.parameters():
             param.requires_grad = True
+
+    # elif mode == "fc_resnet":
+    #     # Alle Backbone-Layer unfreezen (layer1-layer4 + conv1 + bn1)
+    #     for name in ("conv1", "bn1", "layer1", "layer2", "layer3", "layer4"):
+    #         layer = getattr(model, name, None)
+    #         if layer is not None:
+    #             for param in layer.parameters():
+    #                 param.requires_grad = True
 
 
 def sensitive_loss(preds, targets):

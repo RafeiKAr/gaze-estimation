@@ -27,6 +27,7 @@ def parse_args():
 
     parser.add_argument("--activation", choices=["Sigmoid", "Gaussian", "ReLU", "None"], default="Sigmoid")
     parser.add_argument("--trainable-layers", choices=["fc_only", "fc_layer4"], default="fc_only")
+    # parser.add_argument("--trainable-layers", choices=["fc_only", "fc_layer4", "fc_resnet"], default="fc_only")
     parser.add_argument("--loss", choices=["standard", "sensitive"], default="standard")
 
     parser.add_argument("--learning-rate", type=float, default=1e-4)
