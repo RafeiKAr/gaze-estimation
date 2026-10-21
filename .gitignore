@@ -51,6 +51,7 @@ dataset/images/
 __pycache__/
 *.py[cod]
 *$py.class
+cache/
 
 
 # =========================
@@ -95,3 +96,8 @@ wandb/
 # =========================
 .DS_Store
 Thumbs.db
+
+# =========================
+# backup-files
+# =========================
+backup_2026-10-21/
