@@ -95,7 +95,10 @@ def diagonal_errors(model, loader, device):
 
     mae = mean_absolute_error(targets_all, predictions)
 
-    rmse = np.sqrt(mean_squared_error(targets_all, predictions))
+    # BUG FIX (Oct 2026): Euclidean RMSE instead of sqrt(sklearn MSE), which
+    # averaged over x and y and made the error sqrt(2) too small (see metrics.py).
+    dist = np.linalg.norm(predictions - targets_all, axis=1)
+    rmse = np.sqrt(np.mean(dist ** 2))
 
     diagonal_error_pct = np.round(100 * (rmse / np.sqrt(2)), 5)
 
@@ -517,12 +520,8 @@ mae = mean_absolute_error(
     predictions.numpy()
 )
 
-rmse = np.sqrt(
-    mean_squared_error(
-        targets_all.numpy(),
-        predictions.numpy()
-    )
-)
+# BUG FIX: Euclidean RMSE (see metrics.py)
+rmse = np.sqrt(np.mean(np.sum((targets_all.numpy() - predictions.numpy()) ** 2, axis=1)))
 
 print("MAE :", mae)
 print("RMSE:", rmse)

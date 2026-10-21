@@ -42,10 +42,20 @@ class GazeDataset(Dataset):
     small enough for this to be fast to iterate over during training.
     """
 
-    def __init__(self, csv_file, transform, dataset_size=None):
-        self.df = pd.read_csv(csv_file)
+    def __init__(self, csv_file, transform, dataset_size=None, indices=None):
+        """
+        Args:
+            indices: explicit row indices to load (see select_rows). If None,
+                the FIRST `dataset_size` rows are used (legacy behaviour; the
+                split CSVs are ordered by subject, so e.g. the first 1000
+                training rows come from only 5 subjects).
+        """
+        df = pd.read_csv(csv_file) if not isinstance(csv_file, pd.DataFrame) else csv_file
+        if indices is not None:
+            df = df.iloc[np.asarray(indices)].reset_index(drop=True)
+        self.df = df
         self.transform = transform
-        self.dataset_size = dataset_size if dataset_size is not None else len(self.df)
+        self.dataset_size = min(dataset_size, len(self.df)) if dataset_size is not None else len(self.df)
 
         probe = transform(Image.new("RGB", (500, 300)))
         self.images = torch.zeros([self.dataset_size] + list(probe.shape))
@@ -64,12 +74,45 @@ class GazeDataset(Dataset):
         return self.images[idx], self.targets[idx]
 
 
+def select_rows(df, n, seed=None, exclude_subjects=None):
+    """Row indices of a subset of size n.
+
+    seed None  -> first n rows (legacy, reproduces all historical results)
+    seed int   -> n rows drawn uniformly at random (reproducible), optionally
+                  excluding whole subjects (for subject-disjoint validation).
+    """
+    pool = np.arange(len(df))
+    if exclude_subjects is not None and "subject_ID" in df.columns:
+        pool = pool[~df["subject_ID"].isin(set(exclude_subjects)).to_numpy()]
+    if seed is None:
+        return pool[:n]
+    rng = np.random.default_rng(seed)
+    return np.sort(rng.choice(pool, size=min(n, len(pool)), replace=False))
+
+
+def select_validation_subjects(df, val_size, seed):
+    """Pick whole subjects from the training CSV until >= val_size rows."""
+    rng = np.random.default_rng(seed)
+    subjects = df["subject_ID"].unique()
+    rng.shuffle(subjects)
+    counts = df["subject_ID"].value_counts()
+    chosen, total = [], 0
+    for subj in subjects:
+        chosen.append(subj)
+        total += counts[subj]
+        if total >= val_size:
+            break
+    return chosen
+
+
 def build_dataloaders(
     split_type,
     train_size,
     test_size,
     batch_size,
     num_workers=8,
+    sample_seed=None,
+    val_size=0,
 ):
     """Build train/test DataLoaders for one of SPLIT_FILES.
 
@@ -79,15 +122,30 @@ def build_dataloaders(
         test_size: number of test samples to load.
         batch_size: batch size shared by both loaders.
         num_workers: DataLoader worker processes.
+        sample_seed: None = first-N rows (legacy); int = random subset.
+        val_size: if > 0, a subject-disjoint validation set is drawn from the
+            training CSV (requires sample_seed) and a third loader returned.
+
+    Returns (train_loader, test_loader) or, if val_size > 0,
+    (train_loader, test_loader, val_loader).
     """
     if split_type not in SPLIT_FILES:
         raise ValueError(f"Unknown split_type: {split_type!r}, expected one of {list(SPLIT_FILES)}")
 
     train_csv, test_csv = SPLIT_FILES[split_type]
     transform = build_transform()
+    train_df, test_df = pd.read_csv(train_csv), pd.read_csv(test_csv)
 
-    train_dataset = GazeDataset(train_csv, transform, dataset_size=train_size)
-    test_dataset = GazeDataset(test_csv, transform, dataset_size=test_size)
+    val_subjects = None
+    if val_size > 0:
+        if sample_seed is None:
+            raise ValueError("val_size > 0 requires a sample_seed")
+        val_subjects = select_validation_subjects(train_df, val_size, sample_seed)
+    train_idx = select_rows(train_df, train_size, sample_seed, exclude_subjects=val_subjects)
+    test_idx = select_rows(test_df, test_size, sample_seed)
+
+    train_dataset = GazeDataset(train_df, transform, indices=train_idx)
+    test_dataset = GazeDataset(test_df, transform, indices=test_idx)
 
     train_loader = DataLoader(
         train_dataset,
@@ -103,7 +161,27 @@ def build_dataloaders(
         num_workers=num_workers,
         persistent_workers=num_workers > 0,
     )
+    if val_size > 0:
+        val_idx = np.flatnonzero(train_df["subject_ID"].isin(set(val_subjects)).to_numpy())[:val_size]
+        val_loader = DataLoader(
+            GazeDataset(train_df, transform, indices=val_idx),
+            batch_size=batch_size, shuffle=False, num_workers=num_workers,
+        )
+        return train_loader, test_loader, val_loader
     return train_loader, test_loader
+
+
+def subset_targets(split_type, train_size, test_size, sample_seed=None):
+    """(train_targets, test_targets) of exactly the subset a loader would use.
+
+    Needed to compute constant/random baselines on the same data as the model
+    (see metrics.subset_baselines) instead of on the full dataset.
+    """
+    train_csv, test_csv = SPLIT_FILES[split_type]
+    train_df, test_df = pd.read_csv(train_csv), pd.read_csv(test_csv)
+    tr = train_df.iloc[select_rows(train_df, train_size, sample_seed)][["x", "y"]].to_numpy(np.float64)
+    te = test_df.iloc[select_rows(test_df, test_size, sample_seed)][["x", "y"]].to_numpy(np.float64)
+    return tr, te
 
 
 def load_normalized_targets(csv_path="./dataset/norm_labels.csv"):
@@ -127,7 +205,7 @@ class EmbeddingDataset(Dataset):
 
 
 @torch.no_grad()
-def compute_embeddings(csv_file, transform, backbone, device, dataset_size=None, batch_size=64, cache_path=None):
+def compute_embeddings(csv_file, transform, backbone, device, dataset_size=None, batch_size=64, cache_path=None, indices=None):
     """Run a frozen backbone once over csv_file and return (embeddings, targets).
 
     Only valid when the backbone is fully frozen (trainable_layers ==
@@ -141,7 +219,7 @@ def compute_embeddings(csv_file, transform, backbone, device, dataset_size=None,
         cached = torch.load(cache_path)
         return cached["embeddings"], cached["targets"]
 
-    image_dataset = GazeDataset(csv_file, transform, dataset_size=dataset_size)
+    image_dataset = GazeDataset(csv_file, transform, dataset_size=dataset_size, indices=indices)
     loader = DataLoader(image_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
     backbone.eval()
@@ -172,30 +250,46 @@ def build_embedding_dataloaders(
     device,
     cache_dir=None,
     extraction_batch_size=64,
+    sample_seed=None,
+    val_size=0,
 ):
     """Like build_dataloaders, but yields precomputed backbone embeddings
     instead of images, for training/evaluating a head only (model.build_head)
     while the backbone stays frozen.
 
     If cache_dir is given, embeddings are cached to
-    "{cache_dir}/{split_type}_{train|test}_{size}.pt" and reused across
+    "{cache_dir}/{split_type}_{part}_{size}[_s{seed}].pt" and reused across
     calls, e.g. across a hyperparameter sweep that only varies the head.
+    Returns (train, test) or (train, test, val) loaders like build_dataloaders.
     """
     if split_type not in SPLIT_FILES:
         raise ValueError(f"Unknown split_type: {split_type!r}, expected one of {list(SPLIT_FILES)}")
 
     train_csv, test_csv = SPLIT_FILES[split_type]
     transform = build_transform()
+    train_df, test_df = pd.read_csv(train_csv), pd.read_csv(test_csv)
 
-    train_cache = Path(cache_dir) / f"{split_type}_train_{train_size}.pt" if cache_dir else None
-    test_cache = Path(cache_dir) / f"{split_type}_test_{test_size}.pt" if cache_dir else None
+    val_subjects = None
+    if val_size > 0:
+        if sample_seed is None:
+            raise ValueError("val_size > 0 requires a sample_seed")
+        val_subjects = select_validation_subjects(train_df, val_size, sample_seed)
+    train_idx = select_rows(train_df, train_size, sample_seed, exclude_subjects=val_subjects)
+    test_idx = select_rows(test_df, test_size, sample_seed)
 
-    train_embeddings, train_targets = compute_embeddings(
-        train_csv, transform, backbone, device, train_size, extraction_batch_size, train_cache
-    )
-    test_embeddings, test_targets = compute_embeddings(
-        test_csv, transform, backbone, device, test_size, extraction_batch_size, test_cache
-    )
+    suffix = "" if sample_seed is None else f"_s{sample_seed}"
+    if val_size > 0:
+        suffix += f"_v{val_size}"
+
+    def cache(part, size):
+        return Path(cache_dir) / f"{split_type}_{part}_{size}{suffix}.pt" if cache_dir else None
+
+    def embed(df, idx, part, size):
+        return compute_embeddings(df, transform, backbone, device, None, extraction_batch_size,
+                                  cache(part, size), indices=idx)
+
+    train_embeddings, train_targets = embed(train_df, train_idx, "train", train_size)
+    test_embeddings, test_targets = embed(test_df, test_idx, "test", test_size)
 
     train_loader = DataLoader(
         EmbeddingDataset(train_embeddings, train_targets), batch_size=batch_size, shuffle=True
@@ -203,4 +297,11 @@ def build_embedding_dataloaders(
     test_loader = DataLoader(
         EmbeddingDataset(test_embeddings, test_targets), batch_size=batch_size, shuffle=False
     )
+    if val_size > 0:
+        val_idx = np.flatnonzero(train_df["subject_ID"].isin(set(val_subjects)).to_numpy())[:val_size]
+        val_embeddings, val_targets = embed(train_df, val_idx, "val", val_size)
+        val_loader = DataLoader(
+            EmbeddingDataset(val_embeddings, val_targets), batch_size=batch_size, shuffle=False
+        )
+        return train_loader, test_loader, val_loader
     return train_loader, test_loader

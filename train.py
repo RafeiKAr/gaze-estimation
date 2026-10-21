@@ -26,8 +26,7 @@ def parse_args():
     parser.add_argument("--num-workers", type=int, default=8)
 
     parser.add_argument("--activation", choices=["Sigmoid", "Gaussian", "ReLU", "None"], default="Sigmoid")
-    parser.add_argument("--trainable-layers", choices=["fc_only", "fc_layer4"], default="fc_only")
-    # parser.add_argument("--trainable-layers", choices=["fc_only", "fc_layer4", "fc_resnet"], default="fc_only")
+    parser.add_argument("--trainable-layers", choices=["fc_only", "fc_layer4", "fc_resnet"], default="fc_only")
     parser.add_argument("--loss", choices=["standard", "sensitive"], default="standard")
 
     parser.add_argument("--learning-rate", type=float, default=1e-4)
@@ -105,11 +104,11 @@ def run(args):
     )
 
     mae, rmse, diag_pct = evaluate(model, test_loader, device)
-    result["final_test_mae"] = float(mae)
+    result["final_test_mean_euclidean"] = float(mae)
     result["final_test_rmse"] = float(rmse)
     result["final_test_diag_pct"] = float(diag_pct)
 
-    print(json.dumps({k: v for k, v in result.items() if k not in ("train_errors", "test_errors")}, indent=2))
+    print(json.dumps({k: v for k, v in result.items() if k not in ("train_errors", "test_errors", "val_errors")}, indent=2))
     return result
 
 

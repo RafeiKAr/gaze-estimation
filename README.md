@@ -1,136 +1,143 @@
-
 # Data-Efficient Personalization for Webcam-Based Eye Tracking
 
-Master thesis project on gaze estimation and data-efficient personalization
-using pretrained computer vision models.
+Master thesis project (Technische Informatik) – *Dateneffiziente Personalisierung für webcam-basiertes Eye-Tracking mithilfe vortrainierter Bildverarbeitungsmodelle*.
+
+A ResNet-18 pretrained on ImageNet is used as a (mostly frozen) feature extractor. A small regression head predicts the 2-D gaze point on the screen. The head is first trained on GazeCapture and then **personalized** with a few minutes of webcam recordings of one person.
 
 ---
 
-## Project Overview
+## 1. Overview
 
-This project investigates webcam-based eye tracking using pretrained
-visual encoders and lightweight personalization strategies.
+| Part | What it does | Main files |
+|---|---|---|
+| Data preparation | download GazeCapture, build `labels.csv` / `norm_labels.csv`, subject and random splits | `main.py` |
+| Model | ResNet-18 + MLP head (512→512→256→128→2), output activation, L1 / sensitive loss, training loop with early stopping | `model.py` |
+| Data loading | split CSV → images → tensors, optional cached backbone features, random subsets, validation set | `dataset.py` |
+| Metric & baselines | diagonal error (Euclidean RMSE / √2), constant and random baselines on the same subset | `metrics.py` |
+| Experiments | hyperparameter sweeps with 5 repeats and 98 % confidence intervals | `exp.py`, `train.py` |
+| Spatial analysis | centre / edge / corner errors, Gaussian error heat maps | `spatial_analysis.py`, `notebooks/visualization.py` |
+| Personalization | recording tools (webcam + moving target) and per-session training | `personalization/`, `notebooks/personal_compare.ipynb` |
 
-The main objectives are:
+### Evaluation metric
 
-- Build a complete gaze estimation pipeline
-- Evaluate baseline methods
-- Train regression models for 2D gaze prediction
-- Investigate data-efficient personalization
-- Compare sampling strategies:
-  - Random sampling
-  - Uncertainty-based sampling
-  - Diversity-based sampling
-- Evaluate generalization under domain shift
-- Develop an interactive demo
+```
+E_diag = 100 * sqrt( mean_i ||p̂_i − p_i||² ) / sqrt(2)      [% of the screen diagonal]
+```
 
----
-
-## Baseline Experiments
-
-Implemented baselines:
-
-- Constant baseline
-- Random baseline
-
-Evaluation metrics:
-
-- Euclidean distance
-- Mean Squared Error (MSE)
-- Root Mean Squared Error (RMSE)
+> **Bug fix (Oct. 2026).** Older code computed `sqrt(sklearn.mean_squared_error(t, p)) / sqrt(2)`. For 2-D targets sklearn averages over x **and** y, so all *model* errors were exactly √2 too small (baselines were correct). All code now uses `metrics.py`. Old logged model values convert exactly: `E_correct = sqrt(2) * E_old`.
 
 ---
 
-## Dataset
+## 2. Directory structure
 
-This project uses the:
-
-GazeCapture Dataset
-
-Official website:
-
-https://gazecapture.csail.mit.edu/
-
-Paper:
-
-https://arxiv.org/abs/1609.06038
-
-### Dataset Setup
-
-Download the dataset manually and place it into:
-
-data/raw/
-
-Expected structure:
-
-data/
-└── raw/
-    └── GazeCapture/
-        ├── 00001/
-        ├── 00002/
-        └── ...
-
-The dataset is NOT included in this repository.
-
----
-
-## Installation
-
-Create environment:
-
-# bash
-python -m venv venv
-
-# Activate environment:
-1) Linux / macOS
-source venv/bin/activate
-
-2) Windows
-venv\Scripts\activate
-
-# Install dependencies:
-pip install -r requirements.txt
-
-# Project Structure
+```
 gaze-estimation/
-│
-├── data/
-├── notebooks/
-├── src/
-├── results/
-├── configs/
+├── main.py                 # dataset download, labels.csv, norm_labels.csv, splits
+├── dataset.py              # GazeDataset, DataLoaders, embedding cache, subsets
+├── model.py                # model, losses, evaluate/predict, train_model
+├── metrics.py              # diagonal error + baselines (single source of truth)
+├── exp.py                  # hyperparameter sweeps (5 repeats, 98 % CI)
+├── train.py                # one training run from the command line
+├── model_train.py          # older stand-alone training script (kept)
+├── spatial_analysis.py     # Fig. 4: centre / edge / corner analysis
 ├── requirements.txt
-├── README.md
-└── main.py
+├── dataset/                # images/ (not in git), labels.csv, norm_labels.csv
+├── splits/                 # norm_subject_*.csv, norm_random_*.csv
+├── personalization/
+│   ├── base_Code.py        # Gen 1 recording (sessions 01–04)
+│   ├── base_Code_rand.py   # Gen 2 recording (sessions 05–09)
+│   ├── base_Code_corner.py # Gen 3 recording (sessions 10–18, discarded)
+│   └── <session>/          # images2/, norm_labels.csv, norm_labels_clean.csv
+├── notebooks/
+│   ├── Compare_notebook.ipynb   # GazeCapture: training, baselines, sweeps, spatial analysis
+│   ├── personal_compare.ipynb   # personalization of the 18 sessions + analyses
+│   ├── notebook_alles.ipynb     # archive of all earlier notebooks (with outputs)
+│   ├── visualization.py         # interactive cursor heat map
+│   └── baseline_personal.py     # evaluate a base model on one session
+├── models/                 # checkpoints (*.path, not in git)
+└── results/
+    ├── exp_reproduction/   # exp_results.json, results_experiment_all.txt
+    ├── heatmap/            # predictions for the spatial analysis
+    ├── personal/           # personalization results
+    └── figures/            # figures generated by the notebooks
+```
 
-# Running Baseline Evaluation
-python main.py
-or open:
-notebooks/02_baseline.ipynb
+Sessions used in the thesis: **Gen 1 = 01–04, Gen 2 = 05–09, Gen 4 = 19–27** (18 sessions). Gen 3 (10–18) was discarded; its folders are kept unchanged.
 
-# Example Results
-| Method            | Mean Error |
-| ----------------- | ---------- |
-| Constant Baseline | 178 px     |
-| Random Baseline   | 280 px     |
+---
 
+## 3. Installation
 
-# Technologies
-Python
-PyTorch
-OpenCV
-NumPy
-Matplotlib
-Gradio
+```bash
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+# optional: install torch/torchvision with CUDA from pytorch.org first
+pip install -r requirements.txt
+```
 
-# Future Work
-Pretrained visual backbones
-Personalization strategies
-Active learning
-Domain adaptation
-Online webcam demo
+---
 
-# Author
-Master Thesis Project
+## 4. Reproduce the experiments
 
-# License
+### 4.1 Data
+
+```bash
+python main.py        # downloads GazeCapture (Kaggle, needs kaggle.json),
+                      # writes dataset/labels.csv, dataset/norm_labels.csv and splits/
+```
+
+### 4.2 Baselines and hyperparameter sweeps (GazeCapture)
+
+```bash
+python exp.py --experiment baseline                 # full-data and same-subset baselines
+python exp.py --experiment all --repeats 5          # all sweeps, as in the thesis
+python exp.py --experiment learning_rate            # one sweep only
+python exp.py --experiment all --sample-seed 0 --val-size 200   # recommended for NEW runs
+python exp.py --experiment baseline --quick         # smoke test
+```
+
+Results are written to `results/exp_reproduction/exp_results.json`.
+`--sample-seed` draws random train/test subsets instead of the first N rows (the split CSVs are sorted by subject). `--val-size` adds a subject-disjoint validation set; early stopping then uses validation data and the reported value is the test error at the best validation epoch.
+
+Single run:
+
+```bash
+python train.py --split-type norm_subject --train-size 1000 --test-size 200 \
+                --trainable-layers fc_only --activation Sigmoid --loss standard
+```
+
+### 4.3 Spatial analysis (Fig. 4)
+
+```bash
+python spatial_analysis.py --input results/heatmap/base_loss1.csv \
+                           --compare results/heatmap/base_loss2.csv --out results/figures
+python -m notebooks.visualization --input results/heatmap/base_loss1.csv   # interactive
+```
+
+### 4.4 Personalization
+
+1. Record a session (webcam + moving target), e.g. `python personalization/base_Code_rand.py`.
+2. Open `notebooks/personal_compare.ipynb`, set `RUN = True` in Section 5 and run all cells. The base model `models/best_models/best_ResNet_Sigmoid_norm_subject.path` must exist (train it with `train.py`).
+3. Sections 6–9 of the notebook reproduce all tables (baseline comparison, original vs. cleaned labels, glasses / background / duration / OS) from the stored results without re-training.
+
+---
+
+## 5. Main results (corrected metric)
+
+| Setting | Model | Constant baseline (same data) |
+|---|---|---|
+| GazeCapture, `norm_subject`, 1000/200, FC only | 28.40 % [28.27, 28.54] | 28.23 % |
+| Personalization, 18 sessions (mean) | **19.85 %** [16.87, 22.82] | 29.85 % |
+| Best session (S02) | 12.05 % | 29.30 % |
+
+The generic GazeCapture model stays close to the constant baseline (its predictions collapse towards the screen centre). Personalization reduces the error by about one third. Details: thesis chapter *Experiments and Results*.
+
+---
+
+## 6. Dataset
+
+GazeCapture – Krafka et al., *Eye Tracking for Everyone*, CVPR 2016 – <https://gazecapture.csail.mit.edu/>. The data set is **not** part of this repository.
+
+## Author
+
+Khaled Rafei – Master thesis, Technische Informatik.

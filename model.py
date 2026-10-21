@@ -12,8 +12,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from scipy import stats
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 from torchvision.models import ResNet18_Weights, resnet18
+
+from metrics import diagonal_error_pct, euclidean_errors
 
 
 class GaussianActivation(nn.Module):
@@ -32,8 +33,7 @@ ACTIVATIONS = {
     "None": nn.Identity,
 }
 
-TRAINABLE_LAYER_MODES = ("fc_only", "fc_layer4")
-# TRAINABLE_LAYER_MODES = ("fc_only", "fc_layer4", "fc_resnet")
+TRAINABLE_LAYER_MODES = ("fc_only", "fc_layer4", "fc_resnet")
 
 # Dimensionality of the ResNet18 feature vector (its avgpool+flatten output,
 # i.e. what a frozen backbone's forward pass produces once model.fc is
@@ -89,7 +89,12 @@ def build_frozen_backbone():
 
 
 def set_trainable_layers(model, mode):
-    """Freeze the backbone, then unfreeze the head (and optionally layer4)."""
+    """Freeze the backbone, then unfreeze the head (and optionally layer4).
+
+    fc_only   : head only                      (427,138 trainable parameters)
+    fc_layer4 : head + ResNet layer4            (8,820,866)
+    fc_resnet : whole network (full fine-tune)  (11,603,650)
+    """
     if mode not in TRAINABLE_LAYER_MODES:
         raise ValueError(f"Unknown trainable_layers mode: {mode!r}, expected one of {TRAINABLE_LAYER_MODES}")
 
@@ -103,13 +108,9 @@ def set_trainable_layers(model, mode):
         for param in model.layer4.parameters():
             param.requires_grad = True
 
-    # elif mode == "fc_resnet":
-    #     # Alle Backbone-Layer unfreezen (layer1-layer4 + conv1 + bn1)
-    #     for name in ("conv1", "bn1", "layer1", "layer2", "layer3", "layer4"):
-    #         layer = getattr(model, name, None)
-    #         if layer is not None:
-    #             for param in layer.parameters():
-    #                 param.requires_grad = True
+    if mode == "fc_resnet":
+        for param in model.parameters():
+            param.requires_grad = True
 
 
 def sensitive_loss(preds, targets):
@@ -127,29 +128,30 @@ LOSS_FUNCTIONS = {
 
 
 @torch.no_grad()
-def evaluate(model, loader, device):
-    """Return (mae, rmse, diagonal_error_pct) of model on loader.
-
-    diagonal_error_pct is the RMSE expressed as a percentage of the (0,1)
-    normalized screen diagonal, i.e. 100 * rmse / sqrt(2).
-    """
+def predict(model, loader, device):
+    """Return (targets, predictions) as numpy arrays of shape (N, 2)."""
     model.eval()
-
     targets_list, preds_list = [], []
     for images, targets in loader:
-        images = images.to(device)
-        preds = model(images)
+        preds = model(images.to(device))
         targets_list.append(targets.cpu().numpy())
         preds_list.append(preds.cpu().numpy())
+    return np.concatenate(targets_list, axis=0), np.concatenate(preds_list, axis=0)
 
-    targets = np.concatenate(targets_list, axis=0)
-    predictions = np.concatenate(preds_list, axis=0)
 
-    mae = mean_absolute_error(targets, predictions)
-    rmse = np.sqrt(mean_squared_error(targets, predictions))
-    diagonal_error_pct = np.round(100 * (rmse / np.sqrt(2)), 5)
+@torch.no_grad()
+def evaluate(model, loader, device):
+    """Return (mean_euclidean_distance, euclidean_rmse, diagonal_error_pct).
 
-    return mae, rmse, diagonal_error_pct
+    diagonal_error_pct = 100 * Euclidean-RMSE / sqrt(2), see metrics.py.
+    BUG FIX: the previous version used sqrt(sklearn.mean_squared_error),
+    which averages over x and y and therefore was sqrt(2) too small.
+    """
+    targets, predictions = predict(model, loader, device)
+    dist = euclidean_errors(targets, predictions)
+    mean_dist = float(dist.mean())
+    rmse = float(np.sqrt(np.mean(dist ** 2)))
+    return mean_dist, rmse, round(diagonal_error_pct(targets, predictions), 5)
 
 
 def confidence_interval(data, confidence=0.95):
@@ -179,21 +181,28 @@ def train_model(
     loss_name="standard",
     model_dir=None,
     verbose=True,
+    val_loader=None,
 ):
-    """Train with early stopping on the test diagonal error.
+    """Train with early stopping.
 
-    Mirrors the notebook's training loop: freezes the backbone according to
-    `trainable_layers`, optimizes with AdamW, and stops once `patience`
-    consecutive epochs pass without a new best test diagonal error.
+    Epoch 0 is the evaluation of the *untrained* model (before the first
+    optimizer step). With the Sigmoid output and a freshly initialised head
+    the outputs are approx. (0.5, 0.5), so epoch 0 is close to a constant
+    "screen centre" predictor -- this is expected and is why the curves start
+    near the constant baseline of the same test subset.
 
-    `model` need not be a full ResNet: pass `trainable_layers=None` to train
-    a standalone head (from model.build_head) on precomputed embeddings
-    (from dataset.build_embedding_dataloaders) instead of freezing/unfreezing
-    parts of a ResNet -- every parameter of `model` is then trained as-is.
+    Model selection:
+      * val_loader given (recommended): early stopping and checkpoint
+        selection on the validation error; the reported test error is the
+        test error at the best validation epoch (no test-set leakage).
+      * val_loader None (legacy behaviour, used for all historical logs):
+        early stopping on the TEST error and `best_test_error` is the
+        minimum test error over epochs 0..T. This is optimistic and, if
+        training never improves, simply returns the epoch-0 value.
 
-    Returns a dict with best_test_error, epochs_run, improvements,
-    elapsed_minutes, train_errors and test_errors (one entry per epoch,
-    epoch 0 being the pre-training evaluation).
+    Returns a dict with best_test_error, test_error_at_best_val (or None),
+    epoch0_test_error, best_epoch, epochs_run, improvements,
+    elapsed_minutes, train_errors, test_errors, val_errors.
     """
     if loss_name not in LOSS_FUNCTIONS:
         raise ValueError(f"Unknown loss_name: {loss_name!r}, expected one of {list(LOSS_FUNCTIONS)}")
@@ -218,13 +227,18 @@ def train_model(
 
     train_start = time.perf_counter()
 
-    train_errors, test_errors = [], []
-    _, _, train_diag = evaluate(model, train_loader, device)
-    _, _, test_diag = evaluate(model, test_loader, device)
-    train_errors.append(train_diag)
-    test_errors.append(test_diag)
+    train_errors, test_errors, val_errors = [], [], []
 
-    best_error = test_diag
+    def _log_epoch():
+        train_errors.append(evaluate(model, train_loader, device)[2])
+        test_errors.append(evaluate(model, test_loader, device)[2])
+        if val_loader is not None:
+            val_errors.append(evaluate(model, val_loader, device)[2])
+        return val_errors[-1] if val_loader is not None else test_errors[-1]
+
+    selection_error = _log_epoch()          # epoch 0 = untrained model
+    best_error = selection_error
+    best_epoch = 0
     epochs_without_improvement = 0
     improvements = 1
     last_epoch = 0
@@ -245,20 +259,19 @@ def train_model(
 
             running_loss += loss.item()
 
-        _, _, train_diag = evaluate(model, train_loader, device)
-        _, _, test_diag = evaluate(model, test_loader, device)
-        train_errors.append(train_diag)
-        test_errors.append(test_diag)
+        selection_error = _log_epoch()
         last_epoch = epoch + 1
 
         if verbose:
+            val_txt = f" val_diag={val_errors[-1]:.4f}%" if val_loader is not None else ""
             print(
                 f"epoch {epoch + 1}: loss={running_loss / len(train_loader):.4f} "
-                f"train_diag={train_diag:.4f}% test_diag={test_diag:.4f}%"
+                f"train_diag={train_errors[-1]:.4f}%{val_txt} test_diag={test_errors[-1]:.4f}%"
             )
 
-        if test_diag < best_error:
-            best_error = test_diag
+        if selection_error < best_error:
+            best_error = selection_error
+            best_epoch = last_epoch
             epochs_without_improvement = 0
             improvements += 1
             if model_dir is not None:
@@ -276,10 +289,15 @@ def train_model(
     elapsed_minutes = (time.perf_counter() - train_start) / 60
 
     return {
-        "best_test_error": best_error,
+        # legacy key: min test error (val_loader None) or test@best-val
+        "best_test_error": test_errors[best_epoch] if val_loader is not None else best_error,
+        "test_error_at_best_val": test_errors[best_epoch] if val_loader is not None else None,
+        "epoch0_test_error": test_errors[0],
+        "best_epoch": best_epoch,
         "epochs_run": last_epoch,
         "improvements": improvements,
         "elapsed_minutes": elapsed_minutes,
         "train_errors": train_errors,
         "test_errors": test_errors,
+        "val_errors": val_errors,
     }

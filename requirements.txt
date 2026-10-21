@@ -1,31 +1,36 @@
+# Data-Efficient Personalization for Webcam-Based Eye Tracking
+# Python >= 3.10
+#
+# Minimum versions are given (all mutually compatible). To freeze the exact
+# versions of your working environment for the thesis appendix, run
+#     pip freeze > requirements-lock.txt
+#
+# PyTorch with CUDA: install torch/torchvision first with the command from
+# https://pytorch.org/get-started/locally/ , then `pip install -r requirements.txt`.
 
-# Core
-numpy
-pandas
-scipy
-opencv-python
+# --- Deep learning ------------------------------------------------------------
+torch>=2.0,<3            # torch.load(weights_only=...), AdamW
+torchvision>=0.15        # ResNet18_Weights API
+tensorboard>=2.12        # model_train.py (SummaryWriter)
 
-# Visualization
-matplotlib
+# --- Numerics / data ----------------------------------------------------------
+numpy>=1.24,<3
+pandas>=2.0
+scipy>=1.10              # t-distribution confidence intervals
+scikit-learn>=1.2        # main.py: train_test_split, GroupShuffleSplit
 
+# --- Images / video / recording ----------------------------------------------
+Pillow>=9.5
+opencv-python>=4.8       # personalization/base_Code*.py (webcam capture)
+pygame>=2.5              # personalization/base_Code*.py (moving gaze target)
 
+# --- Visualisation / utilities -----------------------------------------------
+matplotlib>=3.7
+tqdm>=4.65
 
-# Machine Learning
-scikit-learn
-torch
-torchvision
-tensorboard
+# --- Data download ------------------------------------------------------------
+kaggle>=1.6              # main.py: download of the GazeCapture copy
 
-# Utilities
-tqdm
-Pillow
-
-# Notebook
-jupyter
-
-# Datasets
-kaggle>=1.7.0
-
-
-
-
+# --- Notebooks ----------------------------------------------------------------
+jupyterlab>=4.0
+ipykernel>=6.25

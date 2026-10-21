@@ -14,6 +14,17 @@ Usage:
     python exp.py --experiment learning_rate --repeats 5 --epochs 500
     python exp.py --experiment baseline --quick   # fast smoke test
 
+Metric fix (Oct 2026): model.evaluate now uses the Euclidean diagonal error
+from metrics.py. Logs produced before this fix (e.g. results_experiment_all)
+are sqrt(2) too small for the MODEL errors (baselines were already correct);
+multiply old model values by sqrt(2) to compare them with the baselines.
+
+New options:
+    --sample-seed S   random train/test subsets instead of the first N rows
+    --val-size V      subject-disjoint validation set for early stopping;
+                      the reported error is then the test error at the best
+                      validation epoch (no model selection on the test set)
+
 Note: the historical numbers in results.tex were produced by manually
 re-running notebook cells with hand-edited hyperparameters, so some
 sub-experiments were not run at a shared baseline configuration. This
@@ -25,16 +36,14 @@ numbers will differ slightly from results.tex even though the methodology
 
 import argparse
 import json
-
 from pathlib import Path
 
 import numpy as np
 import torch
 
-from dataset import build_dataloaders, build_embedding_dataloaders, load_normalized_targets
+from dataset import build_dataloaders, build_embedding_dataloaders, load_normalized_targets, subset_targets
+from metrics import subset_baselines
 from model import build_frozen_backbone, build_head, build_model, confidence_interval, train_model
-
-# from utils import count_parameters # <-- NEU: Importiere deine Funktion
 
 # DEFAULT_CONFIG = {
 #     "split_type": "norm_random",
@@ -50,7 +59,6 @@ from model import build_frozen_backbone, build_head, build_model, confidence_int
 #     "patience": 3,
 # }
 
-
 DEFAULT_CONFIG = {
     "batch_size": 32,
     "learning_rate": 1e-4,              # wird beim Sweep überschrieben
@@ -64,6 +72,8 @@ DEFAULT_CONFIG = {
     "test_size": 200,                   # ← hier dein Wert
     "split_type": "norm_subject",       # ← hier dein Wert
     "num_workers": 0,
+    "sample_seed": None,                # None = first-N rows (legacy logs)
+    "val_size": 0,                      # 0 = legacy early stopping on test
 }
 
 CONFIDENCE = 0.98
@@ -95,6 +105,13 @@ def compute_baselines(repeats=30, sample_size=2000, seed=0):
     }
 
 
+def compute_subset_baselines(config):
+    """Constant/random baseline on exactly the train/test subset of `config`."""
+    tr, te = subset_targets(config["split_type"], config["train_size"], config["test_size"],
+                            config.get("sample_seed"))
+    return subset_baselines(tr, te)
+
+
 def run_once(config, device, use_embeddings=True):
     """Run one training config. When the backbone stays frozen (fc_only) and
     use_embeddings is set, train only the head on cached backbone embeddings
@@ -104,7 +121,7 @@ def run_once(config, device, use_embeddings=True):
     """
     if use_embeddings and config["trainable_layers"] == "fc_only":
         backbone = build_frozen_backbone()
-        train_loader, test_loader = build_embedding_dataloaders(
+        loaders = build_embedding_dataloaders(
             split_type=config["split_type"],
             train_size=config["train_size"],
             test_size=config["test_size"],
@@ -112,18 +129,26 @@ def run_once(config, device, use_embeddings=True):
             backbone=backbone,
             device=device,
             cache_dir=EMBEDDING_CACHE_DIR,
+            sample_seed=config.get("sample_seed"),
+            val_size=config.get("val_size", 0),
         )
         model, model_name = build_head(activation=config["activation"]), "head_only"
         trainable_layers = None
     else:
-        train_loader, test_loader = build_dataloaders(
+        loaders = build_dataloaders(
             split_type=config["split_type"],
             train_size=config["train_size"],
             test_size=config["test_size"],
             batch_size=config["batch_size"],
+            num_workers=config.get("num_workers", 0),
+            sample_seed=config.get("sample_seed"),
+            val_size=config.get("val_size", 0),
         )
         model, model_name = build_model(activation=config["activation"])
         trainable_layers = config["trainable_layers"]
+
+    train_loader, test_loader = loaders[0], loaders[1]
+    val_loader = loaders[2] if len(loaders) == 3 else None
 
     result = train_model(
         model,
@@ -139,6 +164,7 @@ def run_once(config, device, use_embeddings=True):
         loss_name=config["loss"],
         model_dir=None,
         verbose=False,
+        val_loader=val_loader,
     )
     return result["best_test_error"], result["elapsed_minutes"]
 
@@ -198,11 +224,7 @@ def build_experiments(repeats, base_config, device, use_embeddings=True):
         ),
         "trainable_layers": lambda: run_sweep(
             "trainable_layers",
-            {
-                "fc_only": {"trainable_layers": "fc_only"},
-                "fc_layer4": {"trainable_layers": "fc_layer4"},
-                # "fc_resnet": {"trainable_layers": "fc_resnet", "use_embeddings": False},
-            },
+            {mode: {"trainable_layers": mode} for mode in ("fc_only", "fc_layer4", "fc_resnet")},
             repeats,
             base_config,
             device,
@@ -259,6 +281,10 @@ def parse_args():
     parser.add_argument("--repeats", type=int, default=5, help="Repeats per configuration (baseline default 30).")
     parser.add_argument("--epochs", type=int, default=DEFAULT_CONFIG["epochs"])
     parser.add_argument("--patience", type=int, default=DEFAULT_CONFIG["patience"])
+    parser.add_argument("--sample-seed", type=int, default=None,
+                        help="Random train/test subset (default: first N rows, legacy).")
+    parser.add_argument("--val-size", type=int, default=0,
+                        help="Subject-disjoint validation set size for early stopping (needs --sample-seed).")
     parser.add_argument("--output-dir", type=str, default="./results/exp_reproduction")
     parser.add_argument(
         "--quick", action="store_true",
@@ -281,6 +307,8 @@ def main():
     base_config = dict(DEFAULT_CONFIG)
     base_config["epochs"] = args.epochs
     base_config["patience"] = args.patience
+    base_config["sample_seed"] = args.sample_seed
+    base_config["val_size"] = args.val_size
 
     repeats = args.repeats
     if args.quick:
@@ -304,6 +332,13 @@ def main():
         }
         print(f"[baseline] constant: {results['baseline']['constant']}")
         print(f"[baseline] random:   {results['baseline']['random']}")
+
+        # Same-subset baselines: the ones that are directly comparable with the
+        # model errors / learning curves of the default configuration.
+        results["baseline_same_subset"] = compute_subset_baselines(base_config)
+        print(f"[baseline] same subset as model ({base_config['split_type']}, "
+              f"{base_config['train_size']}/{base_config['test_size']}): "
+              f"{results['baseline_same_subset']}")
 
     for name in to_run:
         results[name] = experiments[name]()
