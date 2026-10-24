@@ -121,6 +121,11 @@ python -m notebooks.visualization --input results/heatmap/base_loss1.csv   # int
 
 ### 4.4 Personalization (`personal_exp.py`)
 
+**Easiest way (also on a CPU):** open `notebooks/personal_compare.ipynb` and run all cells.
+It runs E0, the feature cache, E1, E1b, E2 and E3 in the right order and creates all tables.
+By default the head is trained on cached backbone features (`--features cached`): the frozen
+backbone is evaluated only once per session (cache in `cache/personal/`), so a run takes seconds.
+
 Requirements: the session folders `personalization/<session>/` with `images2/` (or `images/`)
 and `norm_labels.csv`, and the base models from step E0 (`models/base/base_<split>.pt`).
 

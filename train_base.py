@@ -63,20 +63,26 @@ def train_head(config, seed, device, backbone):
     return head, res
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--splits", nargs="+", default=["norm_subject", "norm_random"])
-    ap.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3, 4])
-    args = ap.parse_args()
+def train_all(splits=("norm_subject", "norm_random"), seeds=(0, 1, 2, 3, 4), skip_existing=True):
+    """Train, select (lowest validation error) and save one base model per split.
 
+    Returns {split: metadata dict}. With skip_existing=True an existing model
+    (models/base/base_<split>.pt + .json) is kept and only its metadata returned.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    backbone = build_frozen_backbone()
-
-    for split in args.splits:
+    backbone = None
+    result = {}
+    for split in splits:
+        meta_file = OUT_DIR / f"base_{split}.json"
+        if skip_existing and meta_file.exists() and (OUT_DIR / f"base_{split}.pt").exists():
+            print(f"[{split}] already exists -> {OUT_DIR / f'base_{split}.pt'} (delete it to retrain)")
+            result[split] = json.loads(meta_file.read_text(encoding="utf-8"))
+            continue
+        backbone = backbone or build_frozen_backbone()
         config = {**exp.DEFAULT_CONFIG, "split_type": split, "sample_seed": 0, "val_size": 200}
         runs, best = [], None
-        for seed in args.seeds:
+        for seed in seeds:
             t0 = time.perf_counter()
             head, res = train_head(config, seed, device, backbone)
             val = res["val_errors"][res["best_epoch"]]
@@ -95,8 +101,19 @@ def main():
                 "selection": "lowest validation error", "runs": runs,
                 "baseline_same_subset": exp.compute_subset_baselines(config),
                 "created": time.strftime("%Y-%m-%d %H:%M")}
-        (OUT_DIR / f"base_{split}.json").write_text(json.dumps(meta, indent=2, default=float), encoding="utf-8")
+        meta_file.write_text(json.dumps(meta, indent=2, default=float), encoding="utf-8")
         print(f"[{split}] saved {OUT_DIR / f'base_{split}.pt'} (seed {best[1]}, val {best[0]:.2f}%)")
+        result[split] = meta
+    return result
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--splits", nargs="+", default=["norm_subject", "norm_random"])
+    ap.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3, 4])
+    ap.add_argument("--retrain", action="store_true", help="overwrite existing base models")
+    args = ap.parse_args()
+    train_all(args.splits, args.seeds, skip_existing=not args.retrain)
 
 
 if __name__ == "__main__":

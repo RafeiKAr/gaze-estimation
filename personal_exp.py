@@ -28,6 +28,14 @@ completely frozen, including the BatchNorm statistics (--bn frozen, default).
 --bn adapt reproduces the old notebook behaviour (BatchNorm running statistics
 are updated during training).
 
+Feature cache (--features cached, default)
+    Because the backbone is completely frozen, it maps every image to the same
+    512 numbers in every epoch. These features are computed ONCE per session
+    and base model (eval transform, no augmentation) and stored in
+    cache/personal/; afterwards only the small head is trained. On a CPU this
+    makes a run take seconds instead of many minutes. --features images is the
+    original image pipeline (with augmentation, BatchNorm option --bn).
+
 Every run also stores its test predictions in results/personal/predictions/
 (needed for the centre/edge/corner analysis, spatial_analysis.py).
 
@@ -68,6 +76,7 @@ SESSION_ROOT = Path("personalization")
 CHECKPOINT = "models/base/base_{base}.pt"          # written by train_base.py
 LABELS_PER_SEC = 6                                  # 30 fps video, one label every 5 frames
 DEFAULT_OUT = Path("results/personal/personal_runs.jsonl")
+FEATURE_CACHE = Path("cache/personal")
 
 
 # ----------------------------------------------------------------------------
@@ -244,6 +253,7 @@ def run_one(session, base="norm_subject", labels="original", split="random", tes
     return {
         "session": session, "test_session": test_name, "base": base, "labels": labels, "split": split,
         "loss": loss, "lr": lr, "batch_size": batch_size, "seed": seed, "gap": gap, "bn": bn,
+        "features": "images",
         "n_train": len(tr), "n_val": len(va), "n_test": len(te),
         "val_error": best_val, "test_error": diagonal_error_pct(t, p),
         "epoch0_test_error": hist["test"][0],          # base model, no personalization
@@ -257,9 +267,163 @@ def run_one(session, base="norm_subject", labels="original", split="random", tes
 
 
 # ----------------------------------------------------------------------------
+# Cached-feature mode (frozen backbone -> features computed once per session)
+# ----------------------------------------------------------------------------
+def load_base_model(base, device):
+    import torch
+    from model import build_model
+    ckpt = Path(CHECKPOINT.format(base=base))
+    if not ckpt.exists():
+        raise FileNotFoundError(f"{ckpt} missing - run train_base.py (experiment E0) first")
+    model, _ = build_model(activation="Sigmoid")
+    model.load_state_dict(torch.load(ckpt, map_location=device, weights_only=True))
+    return model.to(device).eval()
+
+
+def session_features(session, base, device, num_workers=4, batch_size=64, verbose=True):
+    """(features [N,512], frame names [N]) of ALL frames of a session (original labels).
+
+    Computed once with the frozen backbone of the base model (eval mode, eval
+    transform) and cached in cache/personal/<base>_<session>.pt.
+    """
+    import torch
+    cache = FEATURE_CACHE / f"{base}_{session}.pt"
+    if cache.exists():
+        d = torch.load(cache, weights_only=False)
+        return d["X"], list(d["frames"])
+    torch_, nn, DataLoader, FrameSet, _, eval_tf = _torch_parts()
+    model = load_base_model(base, device)
+    model.fc = nn.Identity()
+    df = load_labels(session, "original")
+    loader = DataLoader(FrameSet(session, df, np.arange(len(df)), eval_tf),
+                        batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    t0 = time.perf_counter()
+    feats = []
+    with torch.no_grad():
+        for x, _ in loader:
+            feats.append(model(x.to(device)).cpu())
+    X = torch.cat(feats)
+    FEATURE_CACHE.mkdir(parents=True, exist_ok=True)
+    torch.save({"X": X, "frames": df["frame"].astype(str).tolist()}, cache)
+    if verbose:
+        print(f"  features {base}/{session}: {len(df)} frames in {time.perf_counter() - t0:.0f} s")
+    return X, df["frame"].astype(str).tolist()
+
+
+def _rows_features(session, base, df, device, num_workers):
+    """Features in the row order of df (works for original and cleaned labels)."""
+    import torch
+    X, frames = session_features(session, base, device, num_workers)
+    pos = {f: i for i, f in enumerate(frames)}
+    idx = torch.tensor([pos[str(f)] for f in df["frame"]])
+    return X[idx]
+
+
+def run_one_cached(session, base="norm_subject", labels="original", split="random", test_session=None,
+                   loss="standard", lr=1e-4, batch_size=32, epochs=500, patience=3, seed=42,
+                   num_workers=4, device=None, save_predictions=None, verbose=True, gap=0):
+    """Same protocol as run_one, but the head is trained on cached features."""
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, TensorDataset
+    from model import build_head, sensitive_loss
+
+    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    df = load_labels(session, labels)
+    if split == "two_videos":
+        if not test_session:
+            raise ValueError("two_videos needs a test session (--pairs)")
+        tr, va = two_video_indices(len(df), seed)
+        test_df, test_name = load_labels(test_session, labels), test_session
+        te = np.arange(len(test_df))
+    else:
+        tr, va, te = split_indices(len(df), split, seed, gap=gap)
+        test_df, test_name = df, session
+
+    X = _rows_features(session, base, df, device, num_workers)
+    Xt = X if test_name == session else _rows_features(test_name, base, test_df, device, num_workers)
+    Y = torch.tensor(df[["x", "y"]].to_numpy(np.float32))
+    Yt = torch.tensor(test_df[["x", "y"]].to_numpy(np.float32))
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    g = torch.Generator().manual_seed(seed)
+    ds = lambda A, B, idx: TensorDataset(A[torch.as_tensor(idx)], B[torch.as_tensor(idx)])
+    train_loader = DataLoader(ds(X, Y, tr), batch_size=batch_size, shuffle=True, generator=g)
+    sets = {"train": ds(X, Y, tr), "val": ds(X, Y, va), "test": ds(Xt, Yt, te)}
+
+    head = build_head("Sigmoid")
+    state = load_base_model(base, "cpu").fc.state_dict()
+    head.load_state_dict(state)
+    head.to(device)
+    opt = torch.optim.AdamW(head.parameters(), lr=lr, weight_decay=1e-5)
+    crit = {"standard": nn.L1Loss(), "sensitive": sensitive_loss}[loss]
+
+    @torch.no_grad()
+    def pred(name):
+        head.eval()
+        A, B = sets[name].tensors
+        return B.numpy(), head(A.to(device)).cpu().numpy()
+
+    def err(name):
+        t, p = pred(name)
+        return diagonal_error_pct(t, p)
+
+    t0 = time.perf_counter()
+    hist = {k: [err(k)] for k in ("train", "val", "test")}
+    best_val, best_ep, wait = hist["val"][0], 0, 0
+    best_state = {k: v.detach().clone() for k, v in head.state_dict().items()}
+    for ep in range(1, epochs + 1):
+        head.train()
+        for xb, yb in train_loader:
+            opt.zero_grad()
+            l = crit(head(xb.to(device)), yb.to(device))
+            l.backward()
+            opt.step()
+        for k in hist:
+            hist[k].append(err(k))
+        if hist["val"][-1] < best_val:
+            best_val, best_ep, wait = hist["val"][-1], ep, 0
+            best_state = {k: v.detach().clone() for k, v in head.state_dict().items()}
+        else:
+            wait += 1
+            if wait >= patience:
+                break
+    minutes = (time.perf_counter() - t0) / 60
+    head.load_state_dict(best_state)
+    t, p = pred("test")
+    if verbose:
+        print(f"  [{session}->{test_name}] {base} {labels} {split} seed {seed}: best epoch {best_ep}/"
+              f"{len(hist['val']) - 1}, val {best_val:.2f}%, test {diagonal_error_pct(t, p):.2f}%")
+
+    xy_tr = df[["x", "y"]].to_numpy(float)[tr]
+    xy_te = test_df[["x", "y"]].to_numpy(float)[te]
+    if save_predictions:
+        Path(save_predictions).mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"gt_x": t[:, 0], "gt_y": t[:, 1], "pred_x": p[:, 0], "pred_y": p[:, 1]}).to_csv(
+            Path(save_predictions) / f"pred_{session}-{test_name}_{base}_{labels}_{split}_{loss}_s{seed}.csv",
+            index=False)
+    n_epochs = len(hist["val"]) - 1
+    return {
+        "session": session, "test_session": test_name, "base": base, "labels": labels, "split": split,
+        "loss": loss, "lr": lr, "batch_size": batch_size, "seed": seed, "gap": gap, "bn": "frozen",
+        "features": "cached",
+        "n_train": len(tr), "n_val": len(va), "n_test": len(te),
+        "val_error": best_val, "test_error": diagonal_error_pct(t, p),
+        "epoch0_test_error": hist["test"][0],
+        "best_epoch": best_ep, "epochs": n_epochs,
+        "minutes": minutes, "minutes_per_epoch": minutes / max(n_epochs, 1),
+        "const_baseline": constant_baseline_pct(xy_tr, xy_te),
+        "random_baseline": random_baseline_pct(xy_te, seed=seed),
+        "pred_std": [float(v) for v in p.std(0)],
+        "history": hist,
+    }
+
+
+# ----------------------------------------------------------------------------
 # Result file
 # ----------------------------------------------------------------------------
-KEY = ("session", "test_session", "base", "labels", "split", "loss", "seed", "gap", "bn")
+KEY = ("session", "test_session", "base", "labels", "split", "loss", "seed", "gap", "bn", "features")
 
 
 def load_runs(path=DEFAULT_OUT):
@@ -291,6 +455,54 @@ def summary(path=DEFAULT_OUT):
     print(df.groupby(["base", "labels", "split", "generation"])[
         ["test_error", "epoch0_test_error", "const_baseline", "minutes"]].mean().round(2).to_string())
     return df
+
+
+def run_series(sessions=("all",), bases=("norm_subject",), labels=("original",), split="random",
+               pairs=None, seeds=(42,), features="cached", gap_sec=1.0, bn="frozen", loss="standard",
+               lr=1e-4, batch_size=32, epochs=500, patience=3, num_workers=4, out=DEFAULT_OUT,
+               save_predictions="results/personal/predictions", dry_run=False):
+    """Run (and store) all missing runs of one experiment; returns the list of new results.
+
+    pairs: for split="two_videos", e.g. [("21", "22"), ("22", "21")].
+    Runs that are already in `out` are skipped, so a series can be resumed.
+    """
+    if split == "two_videos":
+        if not pairs:
+            raise ValueError("two_videos needs pairs, e.g. [('21','22'), ('22','21')]")
+        jobs = [(str(a).zfill(2), str(b).zfill(2)) for a, b in pairs]
+    else:
+        jobs = [(s, None) for s in resolve_sessions(sessions)]
+    gap = int(round(gap_sec * LABELS_PER_SEC)) if split == "sequential" else 0
+    bn_ = "frozen" if features == "cached" else bn
+    plan = [dict(session=s, test_session=t or s, base=b, labels=l, split=split, loss=loss, seed=sd,
+                 gap=gap, bn=bn_, features=features)
+            for s, t in jobs for b in bases for l in labels for sd in seeds]
+    done = {run_key(r) for r in load_runs(out)}
+    todo = [p for p in plan if run_key(p) not in done]
+    print(f"{len(plan)} runs planned, {len(plan) - len(todo)} already in {out}, {len(todo)} to do.")
+    if dry_run:
+        for p in todo:
+            print("  ", p)
+        return []
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    new = []
+    for i, p in enumerate(todo, 1):
+        print(f"=== run {i}/{len(todo)}: session {p['session']} -> {p['test_session']}, {p['base']}, "
+              f"{p['labels']}, {p['split']}, seed {p['seed']}")
+        test_s = p["test_session"] if split == "two_videos" else None
+        if features == "cached":
+            r = run_one_cached(p["session"], p["base"], p["labels"], split, test_s, loss, lr, batch_size,
+                               epochs, patience, p["seed"], num_workers,
+                               save_predictions=save_predictions or None, gap=gap)
+        else:
+            r = run_one(p["session"], p["base"], p["labels"], split, test_s, loss, lr, batch_size,
+                        epochs, patience, p["seed"], num_workers, save_predictions=save_predictions or None,
+                        gap=gap, bn=bn_, verbose=False)
+        with out.open("a", encoding="utf-8") as f:          # saved immediately
+            f.write(json.dumps(r) + "\n")
+        new.append(r)
+    return new
 
 
 def ci98(x):
@@ -361,6 +573,8 @@ def main():
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--gap-sec", type=float, default=1.0,
                     help="sequential split: seconds of frames dropped between the blocks (default 1 s)")
+    ap.add_argument("--features", default="cached", choices=["cached", "images"],
+                    help="cached: head on precomputed backbone features (fast, default); images: full pipeline")
     ap.add_argument("--bn", default="frozen", choices=["frozen", "adapt"],
                     help="BatchNorm statistics of the backbone: frozen (default) or updated (old behaviour)")
     ap.add_argument("--save-predictions", default="results/personal/predictions",
@@ -376,39 +590,16 @@ def main():
             latex_sessions(df)
         return
 
+    pairs = None
     if args.split == "two_videos":
         if not args.pairs:
-            ap.error("--split two_videos needs --pairs, e.g. --pairs 01:02,02:01")
-        jobs = [(a.zfill(2), b.zfill(2)) for a, b in (p.split(":") for p in args.pairs.split(","))]
-    else:
-        jobs = [(s, None) for s in resolve_sessions(args.sessions)]
-
-    gap = int(round(args.gap_sec * LABELS_PER_SEC)) if args.split == "sequential" else 0
-    plan = [dict(session=s, test_session=t or s, base=b, labels=l, split=args.split, loss=args.loss, seed=sd,
-                 gap=gap, bn=args.bn)
-            for s, t in jobs for b in args.base for l in args.labels for sd in args.seeds]
-    done = {run_key(r) for r in load_runs(args.out)}
-    todo = [p for p in plan if run_key(p) not in done]
-    print(f"{len(plan)} runs planned, {len(plan) - len(todo)} already in {args.out}, {len(todo)} to do.")
-    if args.dry_run:
-        for p in todo:
-            print("  ", p)
-        return
-
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    for i, p in enumerate(todo, 1):
-        print(f"\n=== run {i}/{len(todo)}: {p}")
-        r = run_one(p["session"], p["base"], p["labels"], p["split"],
-                    None if args.split != "two_videos" else p["test_session"], p["loss"],
-                    args.lr, args.batch_size, args.epochs, args.patience, p["seed"],
-                    args.num_workers, save_predictions=args.save_predictions or None,
-                    gap=p["gap"], bn=p["bn"])
-        print(f"  -> test {r['test_error']:.2f}% (base model {r['epoch0_test_error']:.2f}%, "
-              f"constant {r['const_baseline']:.2f}%), {r['minutes']:.1f} min")
-        with out.open("a", encoding="utf-8") as f:          # saved immediately
-            f.write(json.dumps(r) + "\n")
-    summary(args.out)
+            ap.error("--split two_videos needs --pairs, e.g. --pairs 21:22,22:21")
+        pairs = [tuple(p.split(":")) for p in args.pairs.split(",")]
+    run_series(args.sessions, args.base, args.labels, args.split, pairs, args.seeds, args.features,
+               args.gap_sec, args.bn, args.loss, args.lr, args.batch_size, args.epochs, args.patience,
+               args.num_workers, args.out, args.save_predictions, args.dry_run)
+    if not args.dry_run:
+        summary(args.out)
 
 
 if __name__ == "__main__":
