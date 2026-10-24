@@ -86,6 +86,12 @@ def main():
     # ----- User Inputs -----
     record_number = input("Enter session number (e.g., 19): ").strip()
     duration_sec = int(input("Enter recording duration in seconds (e.g., 120): ").strip())
+    # Corner probability of the start points (session-design experiment:
+    # 60 / 80 / 90 / 100 %). Enter = 90 % (protocol of sessions 19-27).
+    _cp = input("Corner probability in % (60, 80, 90, 100; Enter = 90): ").strip()
+    corner_probability = (float(_cp) / 100.0) if _cp else 0.90
+    if not 0.0 <= corner_probability <= 1.0:
+        raise ValueError("corner probability must be between 0 and 100 %")
     
     # ----- Constants -----
     FPS = 30
@@ -155,9 +161,9 @@ Recording Duration:  {duration_sec} seconds ({TOTAL_FRAMES} frames @ {FPS} FPS)
 Expected Segments:   {TOTAL_SEGMENTS} (each {SEGMENT_DURATION:.1f}s = {WAIT_DURATION}s wait + {MOVE_DURATION}s move)
 
 Startpoint Distribution:
-  - Corner probability: 90%
+  - Corner probability: {corner_probability * 100:.0f}%
   - Corner region size: 10% width × 10% height per corner (4 corners = 4% screen area)
-  - Uniform random:     10%
+  - Uniform random:     {(1 - corner_probability) * 100:.0f}%
 
 Protocol per Segment ({SEGMENT_DURATION}s):
   1. WAIT phase ({WAIT_DURATION}s, {WAIT_FRAMES} frames):
@@ -240,7 +246,7 @@ Note: norm_labels.csv is generated separately from position.txt + video frames
                     phase = "wait"
                     
                     # Generate first startpoint
-                    x, y = generate_start_position(WIDTH, HEIGHT, RADIUS)
+                    x, y = generate_start_position(WIDTH, HEIGHT, RADIUS, corner_probability=corner_probability)
                     angle = random.uniform(0, 2 * math.pi)
                     vx = SPEED * math.cos(angle)
                     vy = SPEED * math.sin(angle)
@@ -262,7 +268,7 @@ Note: norm_labels.csv is generated separately from position.txt + video frames
                 # New segment starts: WAIT phase at new startpoint
                 phase = "wait"
                 if segment_id > 0:  # Not the very first segment
-                    x, y = generate_start_position(WIDTH, HEIGHT, RADIUS)
+                    x, y = generate_start_position(WIDTH, HEIGHT, RADIUS, corner_probability=corner_probability)
                     angle = random.uniform(0, 2 * math.pi)
                     vx = SPEED * math.cos(angle)
                     vy = SPEED * math.sin(angle)

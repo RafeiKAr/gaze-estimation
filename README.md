@@ -38,6 +38,9 @@ gaze-estimation/
 ├── metrics.py              # diagonal error + baselines (single source of truth)
 ├── exp.py                  # hyperparameter sweeps (5 repeats, 98 % CI)
 ├── train.py                # one training run from the command line
+├── personal_exp.py         # personalization runs per session (E1-E3), resumable
+├── train_base.py           # E0: base models for personalization (models/base/)
+├── session_design.py       # coverage / transition analysis, cleaned labels
 ├── model_train.py          # older stand-alone training script (kept)
 ├── spatial_analysis.py     # Fig. 4: centre / edge / corner analysis
 ├── requirements.txt
@@ -90,7 +93,9 @@ python main.py        # downloads GazeCapture (Kaggle, needs kaggle.json),
 
 ```bash
 python exp.py --experiment baseline                 # full-data and same-subset baselines
-python exp.py --experiment all --repeats 5          # all sweeps, as in the thesis
+python exp.py --experiment all --repeats 5          # all sweeps (layers: fc_only + fc_layer4)
+python exp.py --experiment all --include-resnet     # additionally full fine-tuning (fc_resnet, slow)
+python exp.py --experiment trainable_layers --include-resnet   # only the layer sweep, all 3 modes
 python exp.py --experiment learning_rate            # one sweep only
 python exp.py --experiment all --sample-seed 0 --val-size 200   # recommended for NEW runs
 python exp.py --experiment baseline --quick         # smoke test
@@ -114,11 +119,38 @@ python spatial_analysis.py --input results/heatmap/base_loss1.csv \
 python -m notebooks.visualization --input results/heatmap/base_loss1.csv   # interactive
 ```
 
-### 4.4 Personalization
+### 4.4 Personalization (`personal_exp.py`)
 
-1. Record a session (webcam + moving target), e.g. `python personalization/base_Code_rand.py`.
-2. Open `notebooks/personal_compare.ipynb`, set `RUN = True` in Section 5 and run all cells. The base model `models/best_models/best_ResNet_Sigmoid_norm_subject.path` must exist (train it with `train.py`).
-3. Sections 6–9 of the notebook reproduce all tables (baseline comparison, original vs. cleaned labels, glasses / background / duration / OS) from the stored results without re-training.
+Requirements: the session folders `personalization/<session>/` with `images2/` (or `images/`)
+and `norm_labels.csv`, and the base models from step E0 (`models/base/base_<split>.pt`).
+
+Every finished run is appended at once to `results/personal/personal_runs.jsonl`;
+an interrupted series continues where it stopped (finished runs are skipped).
+All seeds are fixed; the backbone incl. BatchNorm statistics stays frozen (`--bn frozen`).
+Test predictions are stored in `results/personal/predictions/` (for the region analysis).
+
+| ID | Purpose | Command | Runs |
+|---|---|---|---|
+| E0 | base models (best hyperparameter config, 5 seeds, best by validation) | `python train_base.py` | 2 x 5 |
+| E1 | all 18 sessions, both base models | `python personal_exp.py --sessions all --base norm_subject norm_random` | 36 |
+| E1b | Gen 4 with cleaned labels (WAIT removed) | `python personal_exp.py --sessions gen4 --labels clean` | 9 |
+| E2 | data loading: random / sequential / two videos (sessions 21, 22, 3 seeds) | `python personal_exp.py --sessions 21 22 --split random --seeds 42 43 44`<br>`python personal_exp.py --sessions 21 22 --split sequential --seeds 42 43 44`<br>`python personal_exp.py --split two_videos --pairs 21:22,22:21 --seeds 42 43 44` | 6 + 6 + 6 |
+| E3 | session design: sequential split for all sessions | `python personal_exp.py --sessions all --split sequential` | 18 |
+| – | results | `python personal_exp.py --summary` (add `--latex` for the session table) | – |
+
+Session design analysis without training (coverage, transition samples) and
+correct cleaned labels for Gen 4:
+
+```bash
+python session_design.py                 # -> results/personal/session_design.csv
+python session_design.py --write-clean   # norm_labels_clean.csv = labels without WAIT frames
+```
+
+Useful options: `--dry-run` (only list the planned runs), `--gap-sec 1.0` (sequential split:
+frames dropped between the blocks), `--bn adapt` (old behaviour: BatchNorm statistics updated).
+
+`notebooks/personal_compare.ipynb` shows the same results with tables and plots
+(Sections 5–9).
 
 ---
 

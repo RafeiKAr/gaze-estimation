@@ -12,6 +12,8 @@ full normalized dataset.
 Usage:
     python exp.py --experiment all
     python exp.py --experiment learning_rate --repeats 5 --epochs 500
+    python exp.py --experiment all --include-resnet          # + full fine-tuning
+    python exp.py --experiment trainable_layers --include-resnet
     python exp.py --experiment baseline --quick   # fast smoke test
 
 Metric fix (Oct 2026): model.evaluate now uses the Euclidean diagonal error
@@ -21,6 +23,9 @@ multiply old model values by sqrt(2) to compare them with the baselines.
 
 New options:
     --sample-seed S   random train/test subsets instead of the first N rows
+    --include-resnet  also run full fine-tuning (fc_resnet) in the
+                      trainable_layers sweep (slow: ~15 min per run);
+                      without it the sweep compares fc_only and fc_layer4
     --val-size V      subject-disjoint validation set for early stopping;
                       the reported error is then the test error at the best
                       validation epoch (no model selection on the test set)
@@ -166,7 +171,11 @@ def run_once(config, device, use_embeddings=True):
         verbose=False,
         val_loader=val_loader,
     )
-    return result["best_test_error"], result["elapsed_minutes"]
+    # elapsed_minutes = wall-clock time of ONE complete training run: from the
+    # evaluation of the untrained model (epoch 0) until early stopping, incl.
+    # the per-epoch evaluation on train/val/test. Not included: loading the
+    # images and computing cached backbone features (done before training).
+    return result["best_test_error"], result["elapsed_minutes"], result["epochs_run"], result["best_epoch"]
 
 
 def run_sweep(name, overrides_per_value, repeats, base_config, device, use_embeddings=True):
@@ -175,12 +184,14 @@ def run_sweep(name, overrides_per_value, repeats, base_config, device, use_embed
     for label, overrides in overrides_per_value.items():
         config = {**base_config, **overrides}
 
-        test_errors, run_times = [], []
+        test_errors, run_times, epochs_run, best_epochs = [], [], [], []
         for r in range(repeats):
             print(f"[{name}] {label} - run {r + 1}/{repeats}")
-            best_error, minutes = run_once(config, device, use_embeddings=use_embeddings)
+            best_error, minutes, n_epochs, best_epoch = run_once(config, device, use_embeddings=use_embeddings)
             test_errors.append(best_error)
             run_times.append(minutes)
+            epochs_run.append(n_epochs)
+            best_epochs.append(best_epoch)
 
         err_mean, err_lo, err_hi = confidence_interval(test_errors, CONFIDENCE)
         time_mean, time_lo, time_hi = confidence_interval(run_times, CONFIDENCE)
@@ -193,18 +204,25 @@ def run_sweep(name, overrides_per_value, repeats, base_config, device, use_embed
             "mean_training_time_min": time_mean,
             "runs": test_errors,
             "times": run_times,
+            "epochs_run": epochs_run,          # epochs trained until early stopping
+            "best_epochs": best_epochs,        # epoch of the reported model (0 = untrained)
+            "mean_minutes_per_epoch": float(np.mean(np.array(run_times) / np.maximum(epochs_run, 1))),
         })
 
         print(
             f"[{name}] {label}: mean_test_error={err_mean:.5f}% "
             f"CI={CONFIDENCE * 100:.0f}%=[{err_lo:.5f}, {err_hi:.5f}] "
-            f"mean_time={time_mean:.3f}min"
+            f"mean_time={time_mean:.3f}min mean_epochs={np.mean(epochs_run):.1f} "
+            f"mean_best_epoch={np.mean(best_epochs):.1f}"
         )
 
     return rows
 
 
-def build_experiments(repeats, base_config, device, use_embeddings=True):
+def build_experiments(repeats, base_config, device, use_embeddings=True, include_resnet=False):
+    # fc_only is the default everywhere; fc_layer4 is always compared,
+    # fc_resnet (full fine-tuning) only on request (--include-resnet).
+    layer_modes = ("fc_only", "fc_layer4") + (("fc_resnet",) if include_resnet else ())
     return {
         "batch_size": lambda: run_sweep(
             "batch_size",
@@ -224,7 +242,7 @@ def build_experiments(repeats, base_config, device, use_embeddings=True):
         ),
         "trainable_layers": lambda: run_sweep(
             "trainable_layers",
-            {mode: {"trainable_layers": mode} for mode in ("fc_only", "fc_layer4", "fc_resnet")},
+            {mode: {"trainable_layers": mode} for mode in layer_modes},
             repeats,
             base_config,
             device,
@@ -283,6 +301,8 @@ def parse_args():
     parser.add_argument("--patience", type=int, default=DEFAULT_CONFIG["patience"])
     parser.add_argument("--sample-seed", type=int, default=None,
                         help="Random train/test subset (default: first N rows, legacy).")
+    parser.add_argument("--include-resnet", action="store_true",
+                        help="trainable_layers sweep: also run fc_resnet (full fine-tuning, slow).")
     parser.add_argument("--val-size", type=int, default=0,
                         help="Subject-disjoint validation set size for early stopping (needs --sample-seed).")
     parser.add_argument("--output-dir", type=str, default="./results/exp_reproduction")
@@ -318,7 +338,8 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    experiments = build_experiments(repeats, base_config, device, use_embeddings=not args.no_embeddings)
+    experiments = build_experiments(repeats, base_config, device, use_embeddings=not args.no_embeddings,
+                                    include_resnet=args.include_resnet)
     to_run = list(experiments) if args.experiment == "all" else [args.experiment] if args.experiment != "baseline" else []
 
     results = {}
