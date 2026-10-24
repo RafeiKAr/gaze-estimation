@@ -43,6 +43,7 @@ gaze-estimation/
 ├── session_design.py       # coverage / transition analysis, cleaned labels
 ├── model_train.py          # older stand-alone training script (kept)
 ├── spatial_analysis.py     # Fig. 4: centre / edge / corner analysis
+├── plot_targets.py         # Fig. 4.1: raw vs. normalized gaze targets
 ├── requirements.txt
 ├── dataset/                # images/ (not in git), labels.csv, norm_labels.csv
 ├── splits/                 # norm_subject_*.csv, norm_random_*.csv
@@ -164,10 +165,21 @@ frames dropped between the blocks), `--bn adapt` (old behaviour: BatchNorm stati
 | Setting | Model | Constant baseline (same data) |
 |---|---|---|
 | GazeCapture, `norm_subject`, 1000/200, FC only | 28.40 % [28.27, 28.54] | 28.23 % |
-| Personalization, 18 sessions (mean) | **19.85 %** [16.87, 22.82] | 29.85 % |
-| Best session (S02) | 12.05 % | 29.30 % |
+| Base model `norm_subject` on the 18 sessions (no personalization) | 30.57 % | 30.32 % |
+| Personalization, 18 sessions, random split (E1, mean [98 % CI]) | **19.79 %** [16.18, 23.40] | 30.32 % |
+| same with base model `norm_random` | 19.59 % [15.47, 23.71] | 30.32 % |
+| Personalization, 18 sessions, sequential split (E3) | 27.93 % | 31.84 % |
+| Sessions 21/22: random / sequential / two videos (E2, 3 seeds) | 13.85 / 15.55 / 17.24 % | 30.97 / 28.67 / 32.65 % |
+| Gen 4, cleaned labels (E1b), MOVE test frames: original vs. clean | 16.72 % vs. 15.88 % | 30.51 % |
+| Best session (S02, random split) | 10.48 % | 28.49 % |
 
-The generic GazeCapture model stays close to the constant baseline (its predictions collapse towards the screen centre). Personalization reduces the error by about one third. Details: thesis chapter *Experiments and Results*.
+The generic GazeCapture model stays at the level of the constant baseline (its predictions collapse towards the screen centre). Personalization reduces the error by about one third with a random split (one run ≈ 2 s on a CPU with the feature cache); with a temporal (sequential) split the gain is smaller (≈ 12 %) and vanishes in 8 of 18 sessions. Details: thesis chapter *Experiments and Results*.
+
+Figure of the raw vs. normalized gaze targets (Fig. 4.1 a/b):
+
+```bash
+python plot_targets.py --out results/figures   # -> raw_targets.png, normalized_targets.png
+```
 
 ---
 
