@@ -1,0 +1,73 @@
+{
+  "split": "norm_random",
+  "config": {
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "epochs": 500,
+    "patience": 3,
+    "weight_decay": 1e-05,
+    "trainable_layers": "fc_only",
+    "activation": "Sigmoid",
+    "loss": "standard",
+    "train_size": 1000,
+    "test_size": 200,
+    "split_type": "norm_random",
+    "num_workers": 0,
+    "sample_seed": 0,
+    "val_size": 200
+  },
+  "selected_seed": 3,
+  "selection": "lowest validation error",
+  "runs": [
+    {
+      "seed": 0,
+      "val_error": 26.8178,
+      "test_error": 27.73987,
+      "epoch0_test_error": 27.78864,
+      "best_epoch": 2,
+      "epochs": 5,
+      "minutes": 0.02852012471666967
+    },
+    {
+      "seed": 1,
+      "val_error": 26.77086,
+      "test_error": 27.73622,
+      "epoch0_test_error": 27.7244,
+      "best_epoch": 2,
+      "epochs": 5,
+      "minutes": 0.027501528883324983
+    },
+    {
+      "seed": 2,
+      "val_error": 26.78396,
+      "test_error": 27.64416,
+      "epoch0_test_error": 27.64416,
+      "best_epoch": 0,
+      "epochs": 3,
+      "minutes": 0.022280181083336476
+    },
+    {
+      "seed": 3,
+      "val_error": 26.74248,
+      "test_error": 27.81292,
+      "epoch0_test_error": 27.68784,
+      "best_epoch": 6,
+      "epochs": 9,
+      "minutes": 0.045632543766669184
+    },
+    {
+      "seed": 4,
+      "val_error": 26.87195,
+      "test_error": 27.67898,
+      "epoch0_test_error": 27.68331,
+      "best_epoch": 1,
+      "epochs": 4,
+      "minutes": 0.025621028383344915
+    }
+  ],
+  "baseline_same_subset": {
+    "constant": 27.663008549616308,
+    "random": 39.82709331252492
+  },
+  "created": "2026-10-24 19:05"
+}
