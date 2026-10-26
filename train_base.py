@@ -1,5 +1,11 @@
 """Train and save the GazeCapture base models used for personalization.
 
+Kurz auf Deutsch: Trainiert die zwei Basismodelle (Split norm_subject und
+norm_random) auf GazeCapture und speichert sie in models/base/. Für jeden
+Split werden 5 Seeds trainiert; behalten wird der Seed mit dem kleinsten
+VALIDIERUNGSfehler. Die Rechenlogik ist unverändert gegenüber der Version,
+mit der die Ergebnisse der Masterarbeit entstanden sind.
+
 The configuration is the one selected by the hyperparameter study
 (exp.py DEFAULT_CONFIG, see exp_results_all.json): FC only, Sigmoid, L1,
 lr 1e-4, batch 32, 1000/200 frames drawn at random (seed 0), early stopping on
@@ -63,12 +69,34 @@ def train_head(config, seed, device, backbone):
     return head, res
 
 
-def train_all(splits=("norm_subject", "norm_random"), seeds=(0, 1, 2, 3, 4), skip_existing=True):
+def warm_cache(config, device, backbone):
+    """Compute the cached ResNet features of the train/test/validation subset
+    BEFORE the seeded runs start (no-op if the cache already exists).
+
+    Why: computing the features iterates a DataLoader, and every DataLoader
+    iteration draws one number from torch's global random generator. If the
+    cache is created inside the first seeded run, that run starts from a
+    different random state than a run with an existing cache. The results of
+    the thesis were produced with an existing cache, so the cache is filled
+    first -> every seed starts exactly as in the thesis runs.
+    """
+    build_embedding_dataloaders(
+        split_type=config["split_type"], train_size=config["train_size"], test_size=config["test_size"],
+        batch_size=config["batch_size"], backbone=backbone, device=device,
+        cache_dir=exp.EMBEDDING_CACHE_DIR, sample_seed=config["sample_seed"], val_size=config["val_size"])
+
+
+def train_all(splits=("norm_subject", "norm_random"), seeds=(0, 1, 2, 3, 4), skip_existing=True,
+              out_dir=None):
     """Train, select (lowest validation error) and save one base model per split.
 
     Returns {split: metadata dict}. With skip_existing=True an existing model
-    (models/base/base_<split>.pt + .json) is kept and only its metadata returned.
+    (<out_dir>/base_<split>.pt + .json) is kept and only its metadata returned.
+    out_dir: target folder (default models/base). Use another folder, e.g.
+    models/base_neu, to retrain WITHOUT overwriting the models of the thesis.
     """
+    global OUT_DIR
+    OUT_DIR = Path(out_dir) if out_dir else Path("models/base")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     backbone = None
@@ -81,6 +109,7 @@ def train_all(splits=("norm_subject", "norm_random"), seeds=(0, 1, 2, 3, 4), ski
             continue
         backbone = backbone or build_frozen_backbone()
         config = {**exp.DEFAULT_CONFIG, "split_type": split, "sample_seed": 0, "val_size": 200}
+        warm_cache(config, device, backbone)
         runs, best = [], None
         for seed in seeds:
             t0 = time.perf_counter()
@@ -112,8 +141,9 @@ def main():
     ap.add_argument("--splits", nargs="+", default=["norm_subject", "norm_random"])
     ap.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3, 4])
     ap.add_argument("--retrain", action="store_true", help="overwrite existing base models")
+    ap.add_argument("--out-dir", default="models/base", help="target folder (e.g. models/base_neu)")
     args = ap.parse_args()
-    train_all(args.splits, args.seeds, skip_existing=not args.retrain)
+    train_all(args.splits, args.seeds, skip_existing=not args.retrain, out_dir=args.out_dir)
 
 
 if __name__ == "__main__":

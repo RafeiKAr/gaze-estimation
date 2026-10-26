@@ -1,5 +1,12 @@
 """Personalization experiments on the recorded sessions (command line).
 
+Kurz auf Deutsch: Ein Lauf = eine Session. Das Basismodell wird geladen, nur
+der Kopf (FC) wird mit den Bildern der Session weiter trainiert, Early
+Stopping auf der Validierung, Testfehler an der besten Validierungs-Epoche.
+Jeder Lauf wird sofort in eine .jsonl-Datei geschrieben; Läufe, die dort
+schon stehen, werden übersprungen. Am einfachsten über Masterarbeit.ipynb
+(Zelle 3) starten. Unter Windows --num-workers 0 verwenden.
+
 One run = one session: the GazeCapture base model is loaded, only the
 regression head (FC) is trained on the session's frames, early stopping uses
 the validation split, and the test error is reported at the best validation

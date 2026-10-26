@@ -1,0 +1,33 @@
+% ==============================================================================
+% thesis.tex – main file of the complete master's thesis (English)
+%
+% Build the PDF (in this folder):   python build_thesis.py thesis.tex
+%
+% Every chapter is a separate file in chapters/. A chapter can be commented
+% out with % for testing; references to it then appear as ??.
+% ==============================================================================
+\documentclass[
+  11pt, a4paper, oneside, DIV=12, BCOR=8mm, parskip=half,
+  headings=normal, bibliography=totoc, listof=totoc
+]{scrreprt}
+
+\input{preamble.tex}
+
+\begin{document}
+
+\input{chapters/00_frontmatter.tex}           % title page to abbreviations
+\input{chapters/01_introduction.tex}          % Chapter 1
+\input{chapters/02_state_of_the_art.tex}      % Chapter 2
+\input{chapters/03_methodology.tex}           % Chapter 3
+\input{chapters/04_experiments_results.tex}   % Chapter 4
+\input{chapters/05_discussion.tex}            % Chapter 5
+\input{chapters/06_conclusion_outlook.tex}    % Chapter 6
+
+\renewcommand{\bibname}{References}
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\input{chapters/07_appendix.tex}              % Appendix
+\input{chapters/08_declaration.tex}           % Statutory declaration
+
+\end{document}

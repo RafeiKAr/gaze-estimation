@@ -1,0 +1,594 @@
+% ==============================================================================
+% Masterarbeit – Kapitel: Stand der Technik (deutsche Fassung)
+% Thema:  Dateneffiziente Personalisierung für webcam-basiertes Eye-Tracking
+%         mithilfe vortrainierter Bildverarbeitungsmodelle
+% Datei:  state_of_the_art.tex (Ordner deutsch)
+% Build:  python build_chapter.py state_of_the_art.tex
+%         (benötigt references.bib im selben Ordner)
+% Hinweis: Inhalt, Struktur, Labels und Zitierschlüssel entsprechen der
+%         englischen Fassung F:\claude\@output\state_of_the_art.tex.
+% ==============================================================================
+
+\documentclass[
+  11pt,
+  a4paper,
+  oneside,
+  DIV=12,                 % Satzspiegel (KOMA, ersetzt geometry)
+  BCOR=8mm,               % Bindekorrektur
+  parskip=half,           % Absatzabstand statt Einzug
+  headings=normal,
+  bibliography=totoc,     % Literaturverzeichnis im Inhaltsverzeichnis
+  listof=totoc            % Tabellen-/Abbildungsverzeichnis im Inhaltsverzeichnis
+]{scrreprt}
+
+% ------------------------------------------------------------------------------
+% Kodierung & Sprache
+% ------------------------------------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}          % für LuaLaTeX/XeLaTeX entfernen
+\usepackage[english,ngerman]{babel}  % letzte Sprache = Hauptsprache (Deutsch)
+\usepackage[autostyle=true,german=quotes]{csquotes}
+
+% ------------------------------------------------------------------------------
+% Schrift & Typografie
+% ------------------------------------------------------------------------------
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\emergencystretch}{3em} % vermeidet zu breite Zeilen bei langen deutschen Wörtern
+
+% ------------------------------------------------------------------------------
+% Mathematik & Einheiten
+% ------------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{icomma}                  % Dezimalkomma im Mathemodus
+\usepackage[locale=DE]{siunitx}      % z.B. \SI{30}{\hertz}
+
+% ------------------------------------------------------------------------------
+% Tabellen
+% ------------------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{longtable}
+\renewcommand{\arraystretch}{1.25}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% ------------------------------------------------------------------------------
+% Abbildungen & Beschriftungen
+% ------------------------------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{subcaption}
+
+% ------------------------------------------------------------------------------
+% Listen, Farben, Hilfsmittel
+% ------------------------------------------------------------------------------
+\usepackage{enumitem}
+\usepackage[dvipsnames,table]{xcolor}
+\usepackage{comment}
+
+% ------------------------------------------------------------------------------
+% Literatur (natbib + bibtex: läuft auf jeder TeX-Installation,
+% Overleaf und Colab; kein biber/biblatex nötig)
+% ------------------------------------------------------------------------------
+\usepackage[numbers,sort&compress]{natbib}
+
+% ------------------------------------------------------------------------------
+% Links & Querverweise (hyperref zuletzt, cleveref danach)
+% ------------------------------------------------------------------------------
+\usepackage[hidelinks]{hyperref}
+\usepackage[ngerman,capitalise,noabbrev]{cleveref}
+
+% ------------------------------------------------------------------------------
+% Eigene Befehle
+% ------------------------------------------------------------------------------
+% Platzhalter für noch zu schreibende Inhalte (rot hervorgehoben)
+\newcommand{\placeholder}[1]{\textcolor{red}{\textbf{[Platzhalter:} #1\textbf{]}}}
+% Code-/Variablennamen im Fließtext
+\newcommand{\code}[1]{\texttt{#1}}
+
+% ==============================================================================
+\begin{document}
+
+\tableofcontents
+
+% Kapitelnummer 2 wie in der Arbeit (Kapitel 1 = Einleitung)
+\setcounter{chapter}{1}
+
+% ==============================================================================
+\chapter{Stand der Technik}
+\label{ch:sota}
+% ==============================================================================
+
+Dieses Kapitel gibt einen Überblick über den Stand der Technik der erscheinungsbasierten Blickschätzung mit gewöhnlichen RGB-Kameras. Ausgehend von den methodischen Grundlagen (\cref{sec:grundlagen}) werden die besonderen Bedingungen webcam-basierter Systeme (\cref{sec:webcam}), die wichtigsten Datensätze (\cref{sec:datensaetze}) sowie die verwendeten Netzarchitekturen (\cref{sec:architekturen}) und vortrainierten Modelle (\cref{sec:pretrained}) beschrieben. Anschließend werden Ansätze zur Personalisierung, zum Domänenwechsel, zur Adaption zur Testzeit und zur Datenqualität diskutiert, bevor die Forschungslücken abgeleitet werden, die die vorliegende Arbeit adressiert.
+
+% ------------------------------------------------------------------------------
+\section{Grundlagen und Entwicklung der erscheinungsbasierten Blickschätzung}
+\label{sec:grundlagen}
+% ------------------------------------------------------------------------------
+Eye-Tracking hat das Ziel, aus Bildinformationen der Augen oder des Gesichts zu bestimmen, wohin eine Person blickt. Je nach Anwendung wird entweder die dreidimensionale Blickrichtung geschätzt, meist als Paar aus Nick- und Gierwinkel (Pitch und Yaw), oder der zweidimensionale \emph{Point of Regard} (PoR), also der Punkt auf einem Bildschirm, auf den die Person blickt. Die vorliegende Arbeit konzentriert sich auf die Schätzung des 2D-PoR aus Bildern einer handelsüblichen Webcam.
+
+\subsection{Klassische erscheinungsbasierte Verfahren}
+\label{subsec:klassisch}
+Erscheinungsbasierte Verfahren lernen eine direkte Abbildung von Bildintensitäten auf Blickziele, ohne ein explizites geometrisches Augenmodell anzupassen. Frühe Ansätze kombinierten handentworfene Bildmerkmale wie Local Binary Patterns (LBP), Histograms of Oriented Gradients (HoG) oder SIFT-Deskriptoren mit linearen Regressoren, Random Forests oder Support-Vector-Regression (SVR). Diese Verfahren sind rechnerisch günstig, ihre Genauigkeit sinkt jedoch deutlich bei Kopfbewegungen und wechselnder Beleuchtung, weil handentworfene Merkmale diese Variationen nur unzureichend von der eigentlichen Blickinformation trennen.
+
+\subsection{Wegweisende Deep-Learning-Ansätze}
+\label{subsec:dl_pioniere}
+Mit dem Aufkommen von Convolutional Neural Networks (CNNs) wurde eine Ende-zu-Ende-Abbildung von Gesichts- und Augenbildern auf Bildschirmpositionen möglich. Krafka et al.~\cite{krafka2016itracker} stellten mit \emph{iTracker} eine der ersten CNN-Architekturen für mobiles Eye-Tracking ohne zusätzliche Hardware vor. Das Modell verarbeitet das linke Auge, das rechte Auge, das Gesicht und ein binäres \emph{Face Grid} in getrennten, AlexNet-ähnlichen Strömen und fusioniert die resultierenden Merkmale, um die 2D-Blickposition vorherzusagen. Ohne Kalibrierung erreicht iTracker einen Vorhersagefehler von \SI{1,71}{\centi\metre} auf Smartphones und \SI{2,53}{\centi\metre} auf Tablets. Zur Personalisierung wird eine nutzerspezifische SVR auf den Merkmalen der Schicht \code{fc1} trainiert, wobei Aufnahmen von bis zu 13 festen Kalibrierpunkten verwendet werden. Mit allen 13 Punkten sinkt der Fehler auf \SI{1,34}{\centi\metre} bzw.\ \SI{2,12}{\centi\metre}; mit sehr wenigen Kalibrierpunkten kann die SVR jedoch überanpassen. Das Modell läuft in Echtzeit auf mobilen Geräten.
+
+Ein wichtiger Beitrag dieser Arbeit war die Veröffentlichung des GazeCapture-Datensatzes (\cref{sec:datensaetze}), der per Crowdsourcing auf Smartphones und Tablets unter In-the-Wild-Bedingungen gesammelt wurde und bis heute als Benchmark und als Quelle für Vortrainingsdaten dient.
+
+\paragraph{Bedeutung für diese Arbeit.}
+iTracker hat drei Elemente etabliert, die bis heute relevant sind: (1) den GazeCapture-Datensatz, (2) die Personalisierung mit Kalibrierdaten und (3) die Fusion von Merkmalen aus mehreren Bildregionen. Die vorliegende Arbeit nutzt dieselbe Datengrundlage, ersetzt aber die AlexNet/SVR-Pipeline durch einen ResNet18-Backbone~\cite{he2016resnet} mit einem MLP-Regressionskopf und L1-Verlust. Zusätzlich verwendet sie ein personendisjunktes Evaluationsprotokoll (\code{norm\_subject}) statt einer zufälligen Aufteilung einzelner Frames und behandelt Label-Rauschen bereits bei der Datenerfassung durch explizite Protokollierung der Aufnahmephase (\code{WAIT} vs.\ \code{MOVE}).
+
+\subsection{Taxonomie der Verfahren zur Blickschätzung}
+\label{subsec:taxonomie}
+Verfahren zur Blickschätzung lassen sich grundsätzlich in drei methodische Klassen einteilen:
+\begin{enumerate}
+  \item \textbf{Modellbasierte (geometrische) Verfahren} verwenden explizite 3D-Augapfelmodelle, die Anpassung von Pupillenellipsen und Hornhautreflexe. Sie benötigen meist hochaufgelöste Bilder unter Infrarotbeleuchtung und sind bei natürlichem Umgebungslicht fehleranfällig.
+  \item \textbf{Merkmalsbasierte Verfahren} extrahieren geometrische Gesichts- und Augenmerkmale, etwa Augenwinkel oder Irismittelpunkte, und berechnen daraus Blickvektoren.
+  \item \textbf{Erscheinungsbasierte Verfahren} verwenden das Augen- oder Gesichtsbild selbst als Eingabe und regressieren mit tiefen neuronalen Netzen direkt 2D-Koordinaten oder 3D-Blickwinkel.
+\end{enumerate}
+Durch die Fortschritte im Deep Learning sind erscheinungsbasierte Verfahren unter uneingeschränkten Bedingungen zum vorherrschenden Paradigma geworden.
+
+Cheng et al.~\cite{cheng2024review} unterscheiden ebenfalls drei Gruppen von Verfahren mit entfernter Kamera: Verfahren auf Basis eines rekonstruierten 3D-Augenmodells, Regressionsverfahren auf Basis von 2D-Augenmerkmalen und erscheinungsbasierte Verfahren. Deep-Learning-Ansätze ordnen sie aus vier Perspektiven: Merkmalsextraktion, Netzarchitektur, persönliche Kalibrierung sowie Geräte und Plattformen. Ein wichtiger Beitrag ist ein Benchmark, der die Vorverarbeitung (Gesichts- und Augendetektion, Datenrektifizierung) und die Nachverarbeitung (Umrechnung zwischen 2D-Blickpunkten und 3D-Blickvektoren) vereinheitlicht und dadurch faire Vergleiche zwischen Verfahren ermöglicht. Laut Benchmark erreichen erscheinungsbasierte Verfahren auf Datensätzen mit kurzem Abstand zwischen Nutzer und Kamera oder mit hochauflösenden Kameras typischerweise etwa $5^\circ$, während auf Datensätzen mit großem Abstand und niedriger Auflösung, etwa Gaze360 und RT-GENE, deutlich größere Fehler auftreten. Als künftige Forschungsrichtungen nennen die Autoren (1) die Extraktion robusterer, umgebungsinvarianter Blickmerkmale, (2) hohe Genauigkeit bei schneller und einfacher Kalibrierung, wobei sie einen Zielkonflikt zwischen Kalibrierdauer und Genauigkeit feststellen, und (3) die Interpretierbarkeit der gelernten Merkmale.
+
+Weitere Übersichtsarbeiten liefern zusätzlichen historischen und methodischen Kontext. Liu et al.~\cite{liu2022beholder} zeichnen die Entwicklung von klassischen zu Deep-Learning-basierten Verfahren nach und dienen in dieser Arbeit vor allem als historische Referenz. Pathirana et al.~\cite{pathirana2022survey} konzentrieren sich auf Deep-Learning-Ansätze für Ein- und Mehrbenutzerszenarien und vergleichen CNN-basierte Architekturen, von denen einige ImageNet-vortrainierte Backbones verwenden. Neuere vortrainierte Repräsentationen wie DINOv2, CLIP oder MAE-basierte Modelle stehen jedoch nicht im Mittelpunkt dieser Übersichten; für benchmarkbasierte Vergleiche dient daher Cheng et al.~\cite{cheng2024review} als Hauptreferenz.
+
+% ------------------------------------------------------------------------------
+\section{Webcam-basiertes Eye-Tracking: In-the-Wild- vs.\ Laborbedingungen}
+\label{sec:webcam}
+% ------------------------------------------------------------------------------
+Im Vergleich zu spezieller Eye-Tracking-Hardware mit Infrarotbeleuchtung bieten webcam-basierte Systeme geringe Kosten und hohe Verfügbarkeit, da sie ohne zusätzliche Hardware in Laptops, Desktop-Rechner und mobile Geräte integriert werden können. Dieser Vorteil wird mit deutlich schwierigeren Betriebsbedingungen erkauft:
+
+\begin{itemize}
+  \item \textbf{Infrarotbasierte Systeme} verwenden hochauflösende Kameras, Infrarotlichtquellen und Hornhautreflexe. Liu et al.~\cite{liu2022beholder} berichten für 2D-abbildungsbasierte und 3D-modellbasierte Verfahren Genauigkeiten von typischerweise $0,5^\circ$--$2^\circ$. Kommerzielle Remote-Tracker arbeiten in festgelegten Abständen (z.\,B.\ \SIrange{50}{80}{\centi\metre}) und erreichen unter optimalen Bedingungen Genauigkeiten von $0,3^\circ$--$0,5^\circ$.
+  \item \textbf{Webcams unter In-the-Wild-Bedingungen} liefern Bilder mit geringerer Auflösung und ohne kontrollierte Beleuchtung. Außerdem schwankt das Umgebungslicht, die Geometrie zwischen Kamera und Bildschirm variiert, und Abstände sowie Kopfhaltungen sind nicht eingeschränkt. Für erscheinungsbasierte Verfahren berichten Liu et al.~\cite{liu2022beholder} Genauigkeiten von typischerweise über $3^\circ$; der Benchmark von Cheng et al.~\cite{cheng2024review} zeigt typische Fehler von etwa $5^\circ$ bei kurzen Abständen und deutlich größere Fehler bei großen Abständen und niedriger Auflösung.
+\end{itemize}
+
+Zwei einflussreiche Arbeiten zeigen dennoch, dass webcam-basiertes Eye-Tracking praktisch nutzbar ist. Papoutsaki et al.~\cite{papoutsaki2016webgazer} stellen \emph{WebGazer} vor, einen quelloffenen Eye-Tracker, der vollständig im Browser läuft. Statt einer expliziten Kalibrierung lernt WebGazer mit Ridge-Regression fortlaufend eine Abbildung von Augenmerkmalen auf Bildschirmpositionen aus Nutzerinteraktionen wie Mausklicks und Cursorbewegungen. Die erreichte Genauigkeit genügt für eine grobe Schätzung des betrachteten Bereichs, nicht aber für feinkörnige Analysen. Valliappan et al.~\cite{valliappan2020smartphone} zeigen dagegen, dass ein auf GazeCapture vortrainiertes CNN, das mit Kalibrierdaten feinabgestimmt und um ein zusätzliches personenspezifisches Regressionsmodell ergänzt wird, auf Smartphones bei einem Betrachtungsabstand von \SIrange{25}{40}{\centi\metre} Genauigkeiten von $0,6^\circ$--$1^\circ$ erreicht. Die Personalisierung mit etwa 30~Sekunden Kalibrierdaten senkt den Fehler von \SI{1,92}{\centi\metre} auf \SI{0,46}{\centi\metre}. Nach Angabe der Autoren ist diese Genauigkeit mit der deutlich teurerer mobiler Eye-Tracker vergleichbar, wurde allerdings unter günstigen Bedingungen erreicht (nahezu frontale Kopfhaltung, kurzer Abstand). Beide Arbeiten unterstreichen, dass die Personalisierung der entscheidende Faktor für die Genauigkeit kamerabasierter Systeme ohne spezielle Hardware ist.
+
+Neben diesen technischen Faktoren beeinflussen nutzerspezifische Eigenschaften wie Augenform, Gesichtsgeometrie, Brille und gewohnte Kopfhaltung die Genauigkeit. Generische Modelle zeigen daher bei neuen Nutzern oft einen systematischen Versatz, was die Personalisierung zu einem zentralen Forschungsthema macht (\cref{sec:personalisierung}). Die vorliegende Arbeit untersucht genau diese Bedingungen, einschließlich verschiedener Betriebssysteme (Ubuntu und Windows), Brillen und Hintergründe.
+
+% ------------------------------------------------------------------------------
+\section{Große Datensätze zur Blickschätzung}
+\label{sec:datensaetze}
+% ------------------------------------------------------------------------------
+Moderne erscheinungsbasierte Verfahren sind auf große und vielfältige Datensätze angewiesen. \Cref{tab:datensaetze} fasst die für diese Arbeit relevanten Datensätze zusammen.
+
+\begin{itemize}
+  \item \textbf{MPIIGaze}~\cite{zhang2015mpiigaze} ist einer der ersten standardisierten In-the-Wild-Datensätze. Er umfasst \num{213659} Gesichtsbilder von 15 Teilnehmenden, die über mehrere Monate bei der alltäglichen Laptopnutzung aufgenommen wurden~\cite{zhang2019mpiigaze}. Die gesichtsbasierte Variante MPIIFaceGaze wird üblicherweise mit einem Leave-one-subject-out-Protokoll ausgewertet.
+  \item \textbf{GazeCapture}~\cite{krafka2016itracker} enthält \num{2445504} per Crowdsourcing erfasste Frames von \num{1474} Teilnehmenden auf mobilen Apple-Geräten (iPhones und iPads) mit großer Variation von Beleuchtung und Kopfhaltung. GazeCapture bildet die Datengrundlage der Baseline-Experimente dieser Arbeit.
+  \item \textbf{ETH-XGaze}~\cite{zhang2020ethxgaze} ist ein hochauflösender Mehrkamera-Datensatz mit mehr als einer Million Bildern von 110 Teilnehmenden und extremen Variationen von Kopfhaltung und Blickwinkel.
+  \item \textbf{EVE}~\cite{park2020eve} kombiniert zeitsynchrone Bildschirmaufnahmen, Kameraansichten der Nutzer und Blickdaten. Der Datensatz wurde von 54 Teilnehmenden erhoben und umfasst vier Kameraansichten mit insgesamt mehr als 12~Millionen Frames.
+  \item \textbf{Gaze360}~\cite{kellnhofer2019gaze360} enthält Innen- und Außenaufnahmen von 238 Teilnehmenden mit 3D-Blicklabels über einen sehr großen Bereich von Kopfhaltungen und Abständen (etwa \num{172000} Frames in den Trainings-, Validierungs- und Testsplits).
+  \item \textbf{EyeDiap} und \textbf{RT-GENE} werden in der Literatur vor allem für datensatzübergreifende Evaluationen verwendet; RT-GENE umfasst unter anderem größere Kameraabstände und am Kopf getragene Geräte.
+\end{itemize}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Überblick über ausgewählte Datensätze zur Blickschätzung.}
+  \label{tab:datensaetze}
+  \begin{tabularx}{\textwidth}{L{2.4cm} L{2.6cm} L{2.2cm} Y}
+    \toprule
+    \textbf{Datensatz} & \textbf{Umfang} & \textbf{Teilnehmende} & \textbf{Aufnahmebedingungen} \\
+    \midrule
+    MPIIGaze      & \num{213659} Bilder & 15 & Laptop-Webcam, Alltagsnutzung über Monate \\
+    GazeCapture   & \num{2445504} Frames & \num{1474} & Smartphones und Tablets, Crowdsourcing \\
+    ETH-XGaze     & >1~Million Bilder & 110 & Mehrkamera-Labor, extreme Kopfhaltungen \\
+    EVE           & >12~Millionen Frames & 54 & Bildschirm-Kamera-Aufbau, Videosequenzen \\
+    Gaze360       & ca.\ \num{172000} Frames & 238 & Innen und außen, große Bereiche von Kopfhaltung und Abstand \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\section{Deep-Learning-Architekturen für die Blickregression}
+\label{sec:architekturen}
+% ------------------------------------------------------------------------------
+\subsection{Convolutional Neural Networks}
+\label{subsec:cnn}
+CNNs wie ResNet-18/50~\cite{he2016resnet}, VGG oder MobileNet sind die Standard-Merkmalsextraktoren für Augen- und Gesichtsausschnitte. Durch ihre lokalen Faltungsoperationen erfassen sie feine Texturen und Kantengradienten der Augenregion. Auch spezialisierte Blickmodelle bauen häufig auf CNNs auf: FAZE~\cite{park2019faze} verwendet einen DenseNet-basierten Encoder-Decoder, um Blick, Kopfhaltung und Erscheinung zu entflechten. In der vorliegenden Arbeit dient ResNet18 als faltungsbasiertes Referenzmodell.
+
+\subsection{Vision Transformer}
+\label{subsec:vit}
+Vision Transformer (ViTs)~\cite{dosovitskiy2021vit} zerlegen ein Bild in Patches und modellieren mit Self-Attention globale räumliche Abhängigkeiten, zum Beispiel zwischen Gesichtsmerkmalen, Kopforientierung und Augenregion. UniGaze~\cite{qin2026unigaze} etabliert MAE-vortrainierte ViTs der Größen Base, Large und Huge als leistungsfähige Backbones für die Blickschätzung. TTP-GE~\cite{nagpure2025ttpge} kombiniert dagegen zwei ResNet-18-Ströme mit einer Transformer-basierten Fusion zu einer hybriden Architektur. GazeCLIP~\cite{wang2026gazeclip} zeigt, dass Transformer nicht grundsätzlich überlegen sind: Dort erreicht ein CLIP-vortrainiertes ResNet-50 $3,5^\circ$ auf MPIIFaceGaze, die ViT-B/32-Variante dagegen $3,7^\circ$. Ye et al.~\cite{ye2024transgaze} zeigen wiederum mit \emph{TransGaze}, dass \enquote{einfache} ViTs mit großskaligem Vortraining sehr gute Ergebnisse auf GazeCapture und MPIIFaceGaze erreichen können; unter den untersuchten Vortrainingsstrategien schneidet das selbstüberwachte DINO-Vortraining am besten ab. Diese Ergebnisse sprechen dafür, faltungsbasierte und Transformer-basierte Encoder gleichermaßen zu untersuchen, statt eine Architektur als allgemein überlegen anzunehmen.
+
+\subsection{Vortrainierte Foundation-Backbones}
+\label{subsec:foundation}
+Transfer Learning aus großskaligem visuellem Vortraining liefert allgemein einsetzbare Bildrepräsentationen, die als eingefrorene Merkmalsextraktoren für nachgelagerte Regressionsköpfe genutzt werden können. Vier Vortrainingsparadigmen sind für diese Arbeit relevant:
+\begin{itemize}
+  \item \textbf{Überwachtes ImageNet-Vortraining}, der klassische Ausgangspunkt für CNN-Backbones wie ResNet~\cite{he2016resnet}.
+  \item \textbf{DINOv2}~\cite{oquab2023dinov2}, ein selbstüberwachtes Verfahren, das robuste visuelle Merkmale ohne manuelle Annotationen lernt.
+  \item \textbf{CLIP}~\cite{radford2021clip}, das Bild- und Textrepräsentationen durch kontrastives Lernen auf Bild-Text-Paaren gemeinsam ausrichtet.
+  \item \textbf{Masked Autoencoders (MAE)}~\cite{he2022mae}, die Repräsentationen durch die Rekonstruktion maskierter Bildbereiche lernen.
+\end{itemize}
+Wie diese Repräsentationen für die Blickschätzung genutzt werden können, wird im folgenden Abschnitt behandelt.
+
+% ------------------------------------------------------------------------------
+\section{Vortrainierte Bildverarbeitungsmodelle für die Blickschätzung}
+\label{sec:pretrained}
+% ------------------------------------------------------------------------------
+\subsection{Eingefrorener Backbone vs.\ vollständiges Fine-Tuning}
+\label{subsec:frozen_full}
+Für die Anpassung vortrainierter Modelle an die Blickschätzung lassen sich zwei grundlegende Strategien unterscheiden. Beim \emph{vollständigen Fine-Tuning} werden alle Gewichte des Backbones aktualisiert; das erlaubt eine maximale Anpassung an die Zielaufgabe, erfordert aber große Datenmengen und birgt auf kleinen Datensätzen die Gefahr von Überanpassung und \emph{katastrophalem Vergessen}. Bei einem \emph{eingefrorenen Backbone} (z.\,B.\ ResNet-18 oder ViT-B/14) bleiben die vortrainierten Gewichte unverändert, und nur ein leichtgewichtiger Regressionskopf wird trainiert. Das reduziert die Zahl der trainierbaren Parameter drastisch und erhält die allgemeinen visuellen Repräsentationen -- eine wichtige Voraussetzung für die Personalisierung mit wenigen Kalibrierdaten.
+
+Kumar et al.~\cite{kumar2022finetuning} liefern eine theoretische und empirische Begründung für diesen Zielkonflikt. Sie vergleichen vollständiges Fine-Tuning mit \emph{Linear Probing}, bei dem nur die letzte lineare Schicht trainiert wird. Auf zehn Datensätzen mit Verteilungsverschiebung erreicht Fine-Tuning innerhalb der Verteilung im Mittel eine um 2\,\% höhere, außerhalb der Verteilung aber eine um 7\,\% niedrigere Genauigkeit. Die Autoren führen dies darauf zurück, dass die vortrainierten Merkmale verzerrt werden, wenn Kopf und Backbone gleichzeitig trainiert werden, während der Kopf noch zufällig oder schlecht initialisiert ist. Als Abhilfe schlagen sie die zweistufige Strategie LP-FT vor (zuerst Linear Probing, dann Fine-Tuning), die die Vorteile beider Verfahren verbindet. Dieses Ergebnis ist für die Personalisierung unmittelbar relevant: Die Kalibrierdaten einer einzelnen Person sind wenige und decken die späteren Nutzungsbedingungen nur teilweise ab, sodass ein eingefrorener Backbone die Generalisierung schützen kann.
+
+Der Regressionskopf besteht typischerweise aus einem mehrschichtigen Perzeptron (MLP), das latente Embeddings, zum Beispiel 512-dimensionale ResNet-Merkmalsvektoren, auf 2D-Koordinaten $(x, y)$ abbildet. Wichtige Entwurfsentscheidungen betreffen die Ausgabe-Aktivierungsfunktion (z.\,B.\ Sigmoid, Gauß oder ReLU) und die Verlustfunktion (z.\,B.\ L1, Smooth L1 oder distanzgewichtete Varianten). Zwischen den beiden Extremen liegen parametereffiziente Verfahren wie Adapter oder LoRA~\cite{hu2022lora}, die in \cref{subsec:peft} behandelt werden.
+
+\subsection{Großskaliges MAE-Vortraining: UniGaze}
+\label{subsec:unigaze}
+Qin et al.~\cite{qin2026unigaze} stellen mit UniGaze ein großskaliges Vortrainingsframework speziell für die Blickschätzung vor. Mit Masked Autoencoders werden visuelle Repräsentationen aus etwa 1,6~Millionen normalisierten Gesichtsbildern von mehr als \num{260000} Identitäten gelernt. Das Vortrainingskorpus kombiniert reale Quellen (VGGFace2, VFHQ, CelebV-Text) mit synthetischen Datensätzen (FaceSynthetics, SFHQ-T2I, FFHQ-NV, XGaze-Dense). Ein zentrales Ergebnis ist die Bedeutung der Datennormalisierung, die Gesichtsbilder und Blicklabels durch Rotation und Skalierung in einen normalisierten Raum abbildet und dadurch den größten Teil der geometrischen Variabilität durch Kopfhaltung und Abstand aufhebt. Zhang et al.~\cite{zhang2018normalization} haben dieses Verfahren als Erste systematisch untersucht und zeigen, dass eine modifizierte Formulierung ohne Skalierungsfaktor die Genauigkeit je nach Evaluationssetting um 9,5--32,7\,\% verbessert. Für UniGaze wird dieses Ergebnis bestätigt: Laut den berichteten Ablationen (UniGaze-B, nur reale Vortrainingsdaten, Leave-one-dataset-out) senkt die Normalisierung den Winkelfehler auf XTest von $14,56^\circ$ auf $11,95^\circ$; mit zusätzlichen synthetischen Daten werden $11,78^\circ$ erreicht.
+
+UniGaze verwendet ViT-Backbones der Größen Base, Large und Huge mit einer Maskierungsrate von 75\,\%. Die ViT-Huge-Konfiguration wird 300 Epochen lang vortrainiert, was etwa \SI{120}{\hour} auf vier NVIDIA-H100-GPUs erfordert. Für die Blickschätzung werden die Modelle anschließend mit einem L1-Regressionsverlust auf MPIIFaceGaze, ETH-XGaze, EYEDIAP, Gaze360 und GazeCapture vollständig feinabgestimmt. Die Autoren werten mehrere Protokolle aus:
+\begin{itemize}
+  \item \textbf{Domänengeneralisierung} (Training auf ETH-XGaze oder Gaze360, Test auf MPIIFaceGaze oder der Bildschirmziel-Teilmenge von EYEDIAP): UniGaze-H erreicht $5,57^\circ$ (X$\rightarrow$M), $4,65^\circ$ (X$\rightarrow$ECS), $5,65^\circ$ (G360$\rightarrow$M) und $5,86^\circ$ (G360$\rightarrow$ECS) und übertrifft damit die verglichenen Verfahren zur Domänengeneralisierung, z.\,B.\ CLIP-Gaze mit $6,41^\circ$, $7,51^\circ$, $6,89^\circ$ und $7,06^\circ$.
+  \item \textbf{Leave-one-dataset-out} (Training auf vier Datensätzen, Test auf dem fünften): UniGaze-H erreicht $11,29^\circ$ (XTest), $4,51^\circ$ (MPIIFaceGaze), $5,47^\circ$ (GazeCapture), $5,88^\circ$ (EYEDIAP) und $12,37^\circ$ (Gaze360).
+  \item \textbf{Gemeinsames Training auf allen Datensätzen} (Training auf allen fünf Trainingssplits): UniGaze-H erreicht $4,46^\circ$ (XTest), $5,08^\circ$ (MPIIFaceGaze), $3,20^\circ$ (GazeCapture), $5,16^\circ$ (EYEDIAP) und $9,07^\circ$ (Gaze360).
+\end{itemize}
+
+Die Ablationsstudien zeigen, dass mehr Vortrainingsdaten die Generalisierung verbessern und dass die Kombination realer und synthetischer Daten besser abschneidet als reale Daten allein. Auch Normalisierung und eine ausreichende Vielfalt der Kopfhaltungen sind entscheidend: Wird die Vielfalt der Kopfhaltungen in den realen Vortrainingsdaten eingeschränkt, steigt der Fehler auf XTest von $11,95^\circ$ auf $16,70^\circ$. Vergleiche mit DINO und FaRL deuten darauf hin, dass die Zusammensetzung der Vortrainingsdaten wichtiger sein kann als ihr bloßer Umfang.
+
+\paragraph{Grenzen.}
+Trotz der starken Generalisierungsergebnisse lässt UniGaze mehrere für die webcam-basierte Personalisierung relevante Fragen offen. Die Evaluation beruht auf Training mit vollständigen Datensätzen und vollständigem Fine-Tuning, nicht auf Few-Shot-Personalisierung mit einer kurzen Kalibrierung. Parametereffiziente Strategien wie reines Kopftraining, LoRA oder Adapter stehen nicht im Mittelpunkt, und der Einfluss von Label-Rauschen in kurzen nutzerspezifischen Kalibriersitzungen wird nicht untersucht. Zudem erfordert das Vortraining erhebliche Rechenressourcen (ViT-Huge: etwa \SI{120}{\hour} auf $4\times$H100). Inwieweit die Verbesserungen auf uneingeschränkte Webcam-Bedingungen mit Brillen, Hintergrundwechseln, niedriger Auflösung und betriebssystemabhängigen Aufnahmeunterschieden übertragbar sind, bleibt offen.
+
+\paragraph{Bedeutung für diese Arbeit.}
+UniGaze ist eine zentrale Referenz für blickspezifisches Vortraining. Während UniGaze die Generalisierung auf Populationsebene behandelt, untersucht die vorliegende Arbeit die ergänzende Frage, wie wirksam vortrainierte Repräsentationen mit etwa \SIrange{90}{120}{\second} Kalibrierdaten (etwa \num{2700}--\num{3600} Frames bei \SI{30}{fps}) an einzelne Nutzer angepasst werden können. UniGaze-vortrainierte ViTs werden neben DINOv2- und CLIP-Repräsentationen betrachtet (\cref{tab:unigaze_vergleich}).
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Vergleich von UniGaze und dem Personalisierungssetting dieser Arbeit.}
+  \label{tab:unigaze_vergleich}
+  \begin{tabularx}{\textwidth}{L{2.8cm} L{3.2cm} L{2.6cm} Y}
+    \toprule
+    \textbf{Kriterium} & \textbf{UniGaze-H} & \textbf{UniGaze-B} & \textbf{Diese Arbeit} \\
+    \midrule
+    Vortrainingsdaten & 1,6~Millionen Gesichtsbilder, >\num{260000} Identitäten & Gleiches Korpus & UniGaze-Gewichte, DINOv2, CLIP \\
+    Backbone & ViT-Huge & ViT-Base & Vergleich vortrainierter Backbones \\
+    Fine-Tuning & Gesamtes Modell & Gesamtes Modell & Nur Kopf; LoRA/Adapter, wo unterstützt \\
+    Kalibrierdaten & Vollständige Trainingsdatensätze & Vollständige Trainingsdatensätze & \SIrange{90}{120}{\second}, ca.\ \num{2700}--\num{3600} Frames \\
+    Evaluation & Datensatzübergreifend, Domänengeneralisierung & Datensatzübergreifend, Domänengeneralisierung & Personendisjunkte, personalisierte Webcam-Evaluation \\
+    Label-Rauschen & Keine phasenbasierte Filterung & Keine phasenbasierte Filterung & Explizite \code{WAIT}/\code{MOVE}-Protokollierung \\
+    Rechenaufwand & Ca.\ \SI{120}{\hour} auf $4\times$H100 & Nur für ViT-H angegeben & Kein zusätzliches Vortraining \\
+    Winkelfehler (Leave-one-dataset-out) & $4,51^\circ$--$12,37^\circ$ & $4,73^\circ$--$12,41^\circ$ & Experimentell zu bestimmen \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Vision-Language-Modelle: CLIP-Gaze und GazeCLIP}
+\label{subsec:clip}
+Zwei neuere Arbeiten nutzen das vortrainierte Vision-Language-Modell CLIP~\cite{radford2021clip} für die Blickschätzung, verfolgen aber unterschiedliche Ziele.
+
+\paragraph{CLIP-Gaze.}
+Yin et al.~\cite{yin2024clipgaze} behandeln mit CLIP-Gaze die Domänengeneralisierung, also den Erhalt der Leistung in einer Zieldomäne ohne gelabelte Zieldaten. Die Kernidee besteht darin, blickirrelevante Faktoren durch Textbeschreibungen der Form \enquote{An image of a face with \{condition\}.} zu modellieren. Diese Faktoren sind in drei Gruppen gegliedert: Erscheinung (Identität, Gesichtsausdruck, Haare, Alter usw.), getragenes Zubehör (Brille, Hut, Make-up usw.) und Bildqualität (Rauschen, Unschärfe, Beleuchtung). Ein Distillationsverlust richtet die Blickmerkmale am CLIP-Bildencoder aus, ein Merkmalstrennungsverlust verringert die Ähnlichkeit zu blickirrelevanten Merkmalen, und ein Rangverlust stellt sicher, dass die Ähnlichkeitsreihenfolge der Merkmale der Reihenfolge der Blicklabels entspricht. Zusätzlich passt die \emph{Personalized Context Optimization} (PCO) die Text-Prompts identitätsabhängig an. Der CLIP-Backbone bleibt eingefroren; trainiert wird ein separates Blickschätzungsnetz aus ResNet-18, einem MLP-Merkmalsfilter und einem Regressionskopf. Mit ETH-XGaze und Gaze360 als Quelldatensätzen und MPIIFaceGaze sowie EyeDiap als Zieldatensätzen erreicht CLIP-Gaze über vier datensatzübergreifende Aufgaben einen mittleren Winkelfehler von etwa $6,97^\circ$.
+
+\paragraph{GazeCLIP.}
+Wang et al.~\cite{wang2026gazeclip} integrieren dagegen grobe semantische Blickinformation in die überwachte Blickregression. Ein Prompt-Modul bestimmt per Zero-Shot-Klassifikation mit Prompts der Form \enquote{A photo of a face gazing [class]} eine grobe Blickrichtung aus \{Front, Down, Left, Right\}. Als feinabgestimmter Bildencoder dient ein CLIP-vortrainiertes ResNet-50, während der 12-schichtige Transformer-Textencoder eingefroren bleibt. Ein Cross-Attention-Modul mit Text als Query und Bildmerkmalen als Key und Value fusioniert beide Modalitäten; ein dreischichtiges MLP ($1024 \rightarrow 256 \rightarrow 128 \rightarrow 2$) sagt Pitch und Yaw vorher. GazeCLIP erreicht $3,5^\circ$ auf MPIIFaceGaze, $4,7^\circ$ auf EyeDiap und $7,3^\circ$ auf RT-GENE. Die Ablationen zeigen, dass Cross-Attention ($3,6^\circ$) besser abschneidet als Konkatenation ($4,2^\circ$) und Summation ($4,4^\circ$) und dass die Kombination aus feinabgestimmtem Bildencoder und eingefrorenem Textencoder ($3,6^\circ$) deutlich besser ist als zwei eingefrorene Encoder ($8,9^\circ$). Als Fehlerfälle werden schlechte Beleuchtung und Verdeckungen durch Haare oder Brillen genannt; außerdem kann der Zero-Shot-Klassifikator unter Domänenwechsel falsche grobe Richtungen liefern.
+
+\paragraph{Grenzen und Bedeutung für diese Arbeit.}
+Beide Arbeiten zeigen, dass CLIP-Repräsentationen für die Blickschätzung nutzbar sind, untersuchen aber keine systematische Personalisierung mit einer kurzen Kalibrierung. CLIP-Gaze lässt offen, ob Fine-Tuning oder eine parametereffiziente Anpassung des CLIP-Bildencoders die personenspezifische Schätzung verbessert. GazeCLIP beruht auf vollständigem überwachtem Training mit Benchmarkdaten, behandelt weder Few-Shot-Personalisierung noch die Filterung fehlerhafter Kalibrierlabels, und seine Daten sind laut Veröffentlichung nur auf Anfrage verfügbar. Die vorliegende Arbeit untersucht daher, ob CLIP-Merkmale unter einem kontrollierten Webcam-Personalisierungsprotokoll mit reinem Kopftraining, LoRA oder Adaptern Vorteile gegenüber DINOv2- und MAE-basierten Repräsentationen bieten (\cref{tab:clip_vergleich}). Die berichteten Winkelfehler dienen als Benchmark-Referenzen und sind mit dem in dieser Arbeit verwendeten, auf die Bildschirmdiagonale normierten Fehler nicht direkt vergleichbar.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Vergleich von CLIP-Gaze, GazeCLIP und den geplanten CLIP-Personalisierungsexperimenten. Die rechte Spalte beschreibt einen Versuchsplan, kein abgeschlossenes Ergebnis.}
+  \label{tab:clip_vergleich}
+  \begin{tabularx}{\textwidth}{L{2.6cm} Y Y Y}
+    \toprule
+    \textbf{Aspekt} & \textbf{CLIP-Gaze~\cite{yin2024clipgaze}} & \textbf{GazeCLIP~\cite{wang2026gazeclip}} & \textbf{Geplante Experimente} \\
+    \midrule
+    Ziel & Domänengeneralisierung & Überwachte Blickregression & Few-Shot-Personalisierung mit Webcam \\
+    Nutzung von CLIP & Bild- und Textencoder eingefroren & Bildencoder feinabgestimmt, Textencoder eingefroren & Bildencoder: eingefroren oder PEFT \\
+    Architektur & ResNet-18, MLP-Filter, Regressionskopf & CLIP-ResNet-50, Cross-Attention, MLP & CLIP-Modell im Vergleich mit DINOv2, MAE, ResNet18 \\
+    Labels der Zieldomäne & Keine (Standardsetting) & Vollständige Trainingsdaten & \SIrange{90}{120}{\second} Kalibrierung \\
+    Berichteter Fehler & Ca.\ $6,97^\circ$ (Mittel über 4 Aufgaben) & $3,5^\circ$ / $4,7^\circ$ / $7,3^\circ$ & Experimentell zu bestimmen \\
+    Datenqualität & Modellierung blickirrelevanter Faktoren & Promptbasierte grobe Richtung (unsicher) & \code{WAIT}-Frames werden ausgeschlossen \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\section{Dateneffiziente Personalisierung}
+\label{sec:personalisierung}
+% ------------------------------------------------------------------------------
+Personenunabhängige Modelle zeigen bei neuen Nutzern oft einen systematischen Versatz, der auf individuelle Unterschiede in Augenanatomie, Gesichtsgeometrie und Kopfhaltung zurückgeht. Park et al.~\cite{park2019faze} sprechen in diesem Zusammenhang von interpersonellen anatomischen Unterschieden, die die Genauigkeit personenunabhängiger Netze begrenzen. Die Personalisierung hat das Ziel, diese Lücke mit möglichst geringem Kalibrieraufwand zu schließen. Die folgenden Unterabschnitte behandeln klassische Kalibrierschemata, Few-Shot- und Meta-Learning-Ansätze sowie parametereffiziente Anpassungsverfahren.
+
+\subsection{Kalibrierverfahren}
+\label{subsec:kalibrierung}
+Bei der aktiven Kalibrierung fixiert die Person nacheinander bekannte Zielpunkte auf dem Bildschirm, deren Koordinaten als Labels für die personenspezifische Anpassung dienen. Typische Schemata verwenden wenige feste Punkte oder kontinuierliche Bahnen über den Bildschirm. iTracker~\cite{krafka2016itracker} verwendet bis zu 13 feste Kalibrierpunkte und trainiert darauf eine nutzerspezifische SVR (\cref{subsec:dl_pioniere}). He et al.~\cite{he2019ondevice} zeigen, dass geeignete Personalisierungsverfahren mit nur 2--5 Kalibrierpunkten pro Person bessere Ergebnisse erzielen als frühere Verfahren mit mehr als 13 Punkten. Auf Smartphones erreicht ihr bestes personalisiertes Modell mit höchstens fünf Kalibrierpunkten einen um 24--26\,\% geringeren mittleren Fehler als der damalige Stand der Technik und läuft vollständig in Echtzeit auf dem Gerät. Zusätzlich schlagen sie ein unüberwachtes Personalisierungsverfahren vor, das nur ungelabelte Gesichtsbilder verwendet. Valliappan et al.~\cite{valliappan2020smartphone} verwenden neben einer Punktkalibrierung eine \emph{Zickzack-Kalibrierung}, bei der sich ein Ziel über 60~Sekunden langsam von links oben nach rechts unten bewegt, während die Frontkamera mit \SI{30}{\hertz} aufnimmt. Mit etwa 100 Kalibrierframes lässt sich der Fehler bereits fast um das Vierfache senken.
+
+Neben der Frage, \emph{wie viele} Kalibrierdaten nötig sind, unterscheiden sich die Verfahren darin, \emph{welcher Teil} des Modells angepasst wird:
+\begin{itemize}
+  \item \textbf{Bias- oder Offset-Kalibrierung:} Chen und Shi~\cite{chen2020offset} zerlegen den Blickwinkel in einen personenunabhängigen Term und einen personenabhängigen Bias. Sie stützen sich auf die Beobachtung, dass der quadrierte Bias zwischen Personen größer ist als die Varianz innerhalb einer Person. Die Kalibrierung benötigt dann nur einen einzigen Blickpunkt, aus dessen Aufnahmen der Bias geschätzt wird. Auf MPIIGaze und EYEDIAP übertrifft das Verfahren vergleichbare Einzelmodelle um bis zu 10\,\%; schon etwa neun Kalibrierbilder senken den Fehler deutlich.
+  \item \textbf{Niedrigdimensionale Personenparameter:} Lindén et al.~\cite{linden2019spaze} modellieren persönliche Variationen mit dem \emph{Spatial Adaptive Gaze Estimator} (SPAZE) als niedrigdimensionalen latenten Parameterraum. Die Kalibrierung reduziert sich auf ein kleines Optimierungsproblem und ist daher kaum anfällig für Überanpassung. Mit neun Kalibrierbeispielen erreicht SPAZE $2,70^\circ$ auf MPIIGaze und verbessert den damaligen Stand der Technik um 14\,\%. Die Autoren zeigen außerdem empirisch, dass persönliche Variationen gut durch drei latente Parameter pro Auge beschrieben werden.
+  \item \textbf{Differenzielle Schätzung:} Liu et al.~\cite{liu2021differential} trainieren ein differenzielles CNN, das den Blickunterschied zwischen zwei Augenbildern derselben Person vorhersagt. Zusammen mit gelabelten Referenzbildern aus der Kalibrierung ergibt sich daraus der Blick für ein neues Bild. Da beide Bilder von derselben Person stammen, heben sich Störfaktoren wie Ausrichtung, Lidschluss oder Beleuchtung teilweise auf. Auf EYEDIAP, MPIIGaze und UT-Multiview übertrifft das Verfahren den Stand der Technik bereits mit einem einzigen Kalibrierbeispiel.
+  \item \textbf{Kalibrierungsfreie Personalisierung:} Zhao et al.~\cite{zhao2022ebpn} schlagen das \emph{Episode-based Personalization Network} (EbPN) vor, das personenspezifische Verzerrungen ohne Kalibrierdaten durch einen separaten Personalisierungszweig ausgleichen soll.
+\end{itemize}
+Zusammengenommen zeigen diese Arbeiten, dass sich ein großer Teil des personenspezifischen Fehlers durch wenige, gezielt angepasste Parameter erklären lässt. Das stützt die in dieser Arbeit verfolgte Strategie, nur einen leichtgewichtigen Regressionskopf auf einem eingefrorenen Backbone anzupassen.
+
+Cheng et al.~\cite{cheng2024review} weisen auf einen grundsätzlichen Zielkonflikt hin: Längere Kalibrierungen führen zu genaueren Schätzungen, beeinträchtigen aber die Benutzbarkeit. Hohe Genauigkeit bei schneller und einfacher Kalibrierung gilt daher als offene Forschungsrichtung. Ein weiterer, häufig vernachlässigter Aspekt ist die Qualität der Kalibrierlabels selbst: Springt ein Ziel, folgt der Blick mit einer physiologischen Verzögerung, sodass Frames in der Übergangsphase falsch gelabelt sein können (\cref{sec:label_noise}).
+
+\subsection{Few-Shot-Learning und Meta-Learning: FAZE}
+\label{subsec:faze}
+Park et al.~\cite{park2019faze} stellen mit FAZE (\emph{Few-Shot Adaptive Gaze Estimation}) einen einflussreichen Ansatz zur personenspezifischen Blickschätzung mit wenigen Kalibrierbeispielen vor. Das Verfahren kombiniert entflochtene Blickrepräsentationen mit Model-Agnostic Meta-Learning (MAML). Statt für jede Person ein eigenes Modell von Grund auf zu trainieren, lernt FAZE eine Initialisierung, die sich mit wenigen gelabelten Beispielen schnell anpassen lässt.
+
+FAZE besteht aus zwei Komponenten. Ein DenseNet-basierter \emph{Disentangling Transforming Encoder-Decoder} (DT-ED) stellt Erscheinung, Blickrichtung und Kopfhaltung in getrennten latenten Codes dar. Rotationsäquivariante Repräsentationen erlauben es, Änderungen der Blick- und Kopforientierung als Transformationen im latenten Raum zu modellieren. Das Training auf Bildpaaren derselben Person kombiniert einen Rekonstruktionsverlust, einen Blickrichtungsverlust und einen Konsistenzterm für die Embeddings. Die zweite Komponente ist ein mit MAML meta-trainierter Blickschätzer: Beim Meta-Training wird über viele Trainingspersonen hinweg eine Initialisierung gelernt, aus der wenige personenspezifische Gradientenschritte einen personalisierten Schätzer erzeugen. Das soll das Risiko der Überanpassung verringern, das beim herkömmlichen Fine-Tuning auf sehr kleinen Datensätzen besteht.
+
+FAZE wird auf GazeCapture trainiert und auf GazeCapture und MPIIGaze ausgewertet. Mit $k = 9$ Kalibrierbeispielen erreicht das Verfahren auf MPIIGaze einen mittleren Winkelfehler von $3,14^\circ$ und verbessert die verglichenen Verfahren für $1 \le k \le 256$ durchgehend. Auf GazeCapture sinkt der Fehler gegenüber dem Stand der Technik um 19\,\%, von $3,91^\circ$ auf $3,18^\circ$.
+
+\paragraph{Grenzen und Abgrenzung.}
+FAZE zeigt, dass die Wirksamkeit einer Kalibrierung nicht nur von der Datenmenge abhängt, sondern auch von der zuvor gelernten Repräsentation und der Anpassungsstrategie. Seine Repräsentation beruht jedoch auf überwachtem Training mit Blickdaten und einer DenseNet-Architektur, nicht auf allgemeinen selbstüberwachten (DINOv2, MAE) oder multimodalen (CLIP) Repräsentationen. Die Anpassung erfolgt über Meta-Learning; einfachere parametereffiziente Alternativen wie reines Kopftraining, LoRA oder Adapter werden nicht als zentrale Strategie untersucht. Auch webcam-spezifische Bedingungen wie schwankende Bildqualität, Brillen, Hintergründe und Betriebssysteme stehen nicht im Fokus, ebenso wenig eine explizite Filterung der Kalibrierframes anhand der Aufnahmephase. Die vorliegende Arbeit greift diese Punkte auf. Da FAZE Winkelfehler angibt, diese Arbeit dagegen einen auf die Bildschirmdiagonale normierten Fehler verwendet, sind die Zahlen nicht direkt vergleichbar.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Vergleich von FAZE und der vorliegenden Arbeit.}
+  \label{tab:faze_vergleich}
+  \begin{tabularx}{\textwidth}{L{3.0cm} Y Y}
+    \toprule
+    \textbf{Aspekt} & \textbf{FAZE~\cite{park2019faze}} & \textbf{Diese Arbeit} \\
+    \midrule
+    Ziel & Few-Shot-Personalisierung der Blickrichtung & Dateneffiziente Personalisierung der Bildschirmposition per Webcam \\
+    Repräsentation & Entflochtene Codes, DenseNet-Encoder-Decoder & ResNet18-Referenz sowie DINOv2-, CLIP- und MAE-basierte Repräsentationen \\
+    Vortraining & Überwacht auf GazeCapture & Vortrainierte Modelle mit unterschiedlichen Zielen und Datenquellen \\
+    Anpassung & MAML und personenspezifische Gradientenschritte & Reines Kopftraining; LoRA und Adapter als Alternativen \\
+    Kalibrierdaten & $k = 1$ bis $256$ Beispiele & Ca.\ \SIrange{90}{120}{\second} (ca.\ \num{2700}--\num{3600} Frames) \\
+    Labelqualität & Keine phasenbasierte Filterung & Ausschluss von \code{WAIT}-Frames über Phasenprotokollierung \\
+    Evaluation & GazeCapture und MPIIGaze & Mehrere Webcam-Sitzungen unter wechselnden Bedingungen \\
+    Berichteter Fehler & $3,14^\circ$ (MPIIGaze, $k = 9$) & Normierter Diagonalfehler, nicht direkt vergleichbar \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Darüber hinaus erweitern Yu et al.~\cite{yu2019redirection} die Few-Shot-Anpassung, indem sie aus wenigen Referenzbildern einer Person per Blickumlenkungssynthese (Gaze Redirection) zusätzliche Trainingsbeispiele erzeugen und damit ein generisches Modell feinabstimmen.
+
+\subsection{Parametereffizientes Fine-Tuning (PEFT)}
+\label{subsec:peft}
+Parametereffiziente Verfahren passen nur einen kleinen Teil der Modellparameter an und lassen den vortrainierten Backbone weitgehend unverändert. Das verringert Speicherbedarf, Rechenaufwand und das Risiko der Überanpassung, wenn nur wenige Kalibrierdaten vorliegen. Drei Varianten sind für die vorliegende Arbeit relevant:
+\begin{itemize}
+  \item \textbf{Reines Kopftraining (FC-only):} Der Backbone bleibt vollständig eingefroren; nur der Regressionskopf wird trainiert. Da die Backbone-Merkmale vorab berechnet und zwischengespeichert werden können, ist dieses Verfahren besonders effizient.
+  \item \textbf{Adapter}~\cite{houlsby2019adapter}: Kleine zusätzliche Module werden zwischen die Schichten eines eingefrorenen Netzes eingefügt und als einzige Komponenten trainiert.
+  \item \textbf{Low-Rank Adaptation (LoRA)}~\cite{hu2022lora}: Die vortrainierten Gewichtsmatrizen $W$ bleiben eingefroren; trainiert wird ein additives Update $\Delta W = BA$ mit Matrizen niedrigen Rangs $r$, was die Zahl der trainierbaren Parameter stark verringert.
+\end{itemize}
+Solche Verfahren wurden in der Blickschätzung bisher kaum systematisch untersucht. Eine Ausnahme ist TPGaze~\cite{liu2024tpgaze}, das die Idee des Prompt-Tunings aus der Verarbeitung natürlicher Sprache überträgt: Ein zusätzlicher Prompt mit weniger als 1\,\% der Parameter eines ResNet-18 wird zur Testzeit ohne Labels angepasst, wobei Meta-Learning sicherstellt, dass die unüberwachte Optimierung tatsächlich den Blickfehler verringert (\cref{sec:tta}). Bao und Lu~\cite{bao2024feature2gaze} zeigen außerdem, dass gerade die vollständig verbundene Ausgabeschicht, die hochdimensionale Bildmerkmale auf den Blick abbildet, stark zur Überanpassung neigt. Folglich spielt die Gestaltung des Regressionskopfs auch beim reinen Kopftraining eine Rolle. Die übrigen betrachteten Arbeiten verwenden entweder vollständiges Fine-Tuning (UniGaze, GazeCLIP), Meta-Learning (FAZE) oder ein eingefrorenes vortrainiertes Modell zur Steuerung eines separat trainierten Netzes (CLIP-Gaze). Die vorliegende Arbeit untersucht daher, wie gut sich reines Kopftraining und weitere parametereffiziente Verfahren für die Personalisierung vortrainierter Modelle mit kurzen Webcam-Kalibrierungen eignen.
+
+% ------------------------------------------------------------------------------
+\section{Domänenwechsel, Generalisierung und Evaluationsprotokolle}
+\label{sec:domain_shift}
+% ------------------------------------------------------------------------------
+\subsection{Personenunabhängige Evaluation}
+\label{subsec:norm_subject}
+Wie gut ein Blickschätzer auf neue Personen generalisiert, hängt entscheidend vom Evaluationsprotokoll ab. Bei einer zufälligen Aufteilung einzelner Frames (\code{norm\_random}) können Bilder derselben Person sowohl im Trainings- als auch im Testsplit vorkommen. Das Modell kann dann personenspezifische Merkmale ausnutzen, und die Generalisierung wird überschätzt. Personendisjunkte Splits (\code{norm\_subject}), etwa in Form eines Leave-one-subject-out-Protokolls, schließen dieses Datenleck aus und messen die Leistung auf wirklich unbekannten Personen. In den Baseline-Experimenten dieser Arbeit auf GazeCapture ergibt \code{norm\_subject} einen Testfehler von \SI{28,39}{\percent}, \code{norm\_random} dagegen \SI{27,72}{\percent}; ein Großteil dieses Unterschieds geht allerdings auf die unterschiedlichen Testdaten zurück, denn auch die Konstant-Baseline ist auf \code{norm\_random} niedriger (\SI{27,66}{\percent} gegenüber \SI{28,46}{\percent}, siehe Kapitel~4).
+
+Davon zu unterscheiden sind datensatzübergreifende Protokolle wie die Leave-one-dataset-out-Evaluation in UniGaze~\cite{qin2026unigaze}, bei der ein ganzer Datensatz zurückgehalten wird. Personendisjunkte und datensatzübergreifende Evaluationen messen somit sich ergänzende Formen der Generalisierung: auf unbekannte Personen innerhalb einer Domäne bzw.\ auf unbekannte Aufnahmebedingungen.
+
+\subsection{Domänenadaption und Domänengeneralisierung}
+\label{subsec:domain_adaptation}
+Unterscheiden sich Trainings- und Testdaten in Personen, Kameras oder Umgebungen, sinkt die Genauigkeit erscheinungsbasierter Verfahren erheblich. Zwei Strategien adressieren diesen Domänenwechsel: Die Domänenadaption nutzt (meist ungelabelte) Daten aus der Zieldomäne, während die Domänengeneralisierung überhaupt keine Zieldaten benötigt.
+
+\paragraph{CRGA.}
+Wang et al.~\cite{wang2022crga} schlagen mit \emph{Contrastive Regression Gaze Adaptation} (CRGA) ein Verfahren zur unüberwachten Domänenadaption vor. Ein Modul zur \emph{Contrastive Domain Generalization} (CDG) lernt stabile Repräsentationen in der Quelldomäne, indem es Merkmale mit ähnlichen Blicklabels zusammenzieht und Merkmale mit stark unterschiedlichen Labels auseinanderschiebt. Ein Modul zur \emph{Contrastive Self-training Adaptation} (CSA) lernt anschließend aus Pseudo-Labels in der Zieldomäne. Mit ETH-XGaze und Gaze360 als Quelldomänen und MPIIGaze, RT-GENE, GazeCapture und EyeDiap als Zieldomänen berichten die Autoren Verbesserungen gegenüber der Baseline um 40,4\,\%, 34,7\,\%, 55,8\,\% und 34,3\,\% (Quelle ETH-XGaze) bzw.\ 31,7\,\%, 30,5\,\%, 32,9\,\% und 23,8\,\% (Quelle Gaze360).
+
+CRGA behandelt damit ein ergänzendes Problem: die Anpassung an eine neue Domäne ohne gelabelte Zieldaten. Die vorliegende Arbeit nutzt dagegen eine kleine Menge gelabelter Kalibrierdaten der Zielperson, was überwachtes Fine-Tuning mit echten Labels statt Pseudo-Labels ermöglicht. Selbsttraining mit Pseudo-Labels birgt zudem die Gefahr eines Bestätigungsfehlers (Confirmation Bias), wenn falsche Vorhersagen im weiteren Training verstärkt werden. Außerdem konzentriert sich diese Arbeit auf personenspezifische Variationen statt auf den Transfer zwischen Benchmark-Datensätzen. CRGA ist daher als verwandte Arbeit zur Robustheit gegenüber Domänenwechsel zu betrachten, nicht als direkt vergleichbare Baseline.
+
+\paragraph{Domänengeneralisierung.}
+Verfahren zur Domänengeneralisierung wie PureGaze~\cite{cheng2022puregaze} oder CLIP-Gaze~\cite{yin2024clipgaze} (\cref{subsec:clip}) versuchen, blickirrelevante Faktoren bereits beim Training aus den Merkmalen zu entfernen, sodass das Modell ohne Zieldaten auf neue Domänen übertragbar ist. UniGaze~\cite{qin2026unigaze} zeigt, dass großskaliges blickspezifisches Vortraining diese Verfahren im typischen datensatzübergreifenden Setting übertreffen kann (\cref{subsec:unigaze}).
+
+\subsection{Blickschätzung für mehrere Personen}
+\label{subsec:gazeonce}
+Zhang et al.~\cite{zhang2022gazeonce} stellen mit GazeOnce ein einstufiges Verfahren vor, das die Blickrichtungen aller Personen in einem Bild in einem einzigen Durchlauf schätzt und auch bei vielen Gesichtern (mehr als zehn pro Bild) echtzeitfähig bleibt. Neben der Blickrichtung werden zusätzliche Gesichtsinformationen wie Bounding Boxes und Landmarken vorhergesagt. Ein projektionsbasierter selbstüberwachter Verlust fördert die Konsistenz zwischen der geschätzten 3D-Blickrichtung und ihren 2D-Projektionen. Für das Training führen die Autoren den synthetischen Datensatz MPSGaze ein, der Gesichter aus WiderFace mit Blicklabels aus ETH-XGaze kombiniert: Für jedes geeignete WiderFace-Gesicht wird ein passendes ETH-XGaze-Gesicht gesucht und eingesetzt. Nach Angabe der Autoren übertrifft GazeOnce bestehende Verfahren sowohl in Genauigkeit als auch in Geschwindigkeit, besonders bei vielen Gesichtern.
+
+GazeOnce behandelt damit ein anderes Problem als diese Arbeit: die gleichzeitige Blickschätzung mehrerer Personen in uneingeschränkten Szenen statt der Personalisierung für einen einzelnen Webcam-Nutzer. Methodisch relevant ist die projektionsbasierte Konsistenzbedingung. Außerdem verdeutlicht MPSGaze, dass synthetisch erzeugte Trainingsdaten mögliche Domänenunterschiede zu realen Webcam-Aufnahmen mit sich bringen.
+
+\subsection{Geräte- und Umgebungsvariationen}
+\label{subsec:geraete}
+Über Unterschiede zwischen Datensätzen hinaus beeinflussen zahlreiche geräte- und umgebungsbedingte Faktoren die Genauigkeit webcam-basierter Systeme. Dazu gehören Brillen und Verdeckungen, Hintergrund und Beleuchtung, Bildauflösung und Kameraabstand sowie die Geometrie zwischen Kamera und Bildschirm. Die Literatur liefert mehrere Hinweise:
+\begin{itemize}
+  \item Cheng et al.~\cite{cheng2024review} beobachten deutlich größere Fehler auf Datensätzen mit großen Abständen und niedriger Auflösung (Gaze360, RT-GENE).
+  \item GazeCLIP~\cite{wang2026gazeclip} nennt schlechte Beleuchtung und Verdeckungen durch Haare oder Brillen als typische Fehlerfälle.
+  \item UniGaze~\cite{qin2026unigaze} hebt die Bedeutung der Vielfalt der Kopfhaltungen und des Wertebereichs der Blicklabels hervor.
+  \item CLIP-Gaze~\cite{yin2024clipgaze} modelliert Zubehör und Bildqualität explizit als blickirrelevante Faktoren.
+\end{itemize}
+Systematische Untersuchungen dieser Faktoren im Kontext der Personalisierung mit kurzen Webcam-Kalibrierungen fehlen jedoch weitgehend. Die vorliegende Arbeit betrachtet daher zusätzlich Aufnahmeunterschiede zwischen Betriebssystemen (Ubuntu und Windows), Brillen, Hintergründe und Kalibrierdauern über mehrere Aufnahmesitzungen hinweg (siehe Kapitel~4).
+
+% ------------------------------------------------------------------------------
+\section{Adaption zur Testzeit}
+\label{sec:tta}
+% ------------------------------------------------------------------------------
+Adaption zur Testzeit (Test-Time Adaptation, TTA) bezeichnet Verfahren, die ein bereits trainiertes Modell erst während der Nutzung an die Zielperson oder die Zielumgebung anpassen, typischerweise mit wenigen oder gar keinen Labels. Anders als bei der klassischen Kalibrierung (\cref{subsec:kalibrierung}) soll die Anpassung mit möglichst wenig aktiver Mitwirkung des Nutzers erfolgen.
+
+\subsection{TTP-GE: selbstüberwachte und schwach überwachte Anpassung}
+\label{subsec:ttpge}
+Nagpure et al.~\cite{nagpure2025ttpge} stellen mit TTP-GE (\emph{Test-Time Personalized Gaze Estimation}) ein zweistufiges Anpassungsverfahren für die Blickschätzung im Fahrzeug vor. Es baut auf GazeDPTR~V2 auf, einer Architektur mit zwei unabhängigen Verarbeitungsströmen für das ursprüngliche und ein affin normalisiertes Gesichtsbild, deren Merkmale ein Transformer fusioniert. Positionsinformation aus einer Punktprojektion ermöglicht neben der Blickregression eine Klassifikation von Blickzonen.
+
+Das Meta-Training folgt einem zweistufigen Optimierungsschema auf Basis von MAML. In der inneren Schleife passt ein selbstüberwachter Konsistenzverlust im Stil von BYOL++ das Modell an neue Personen an, ohne Blicklabels zu benötigen. Die äußere Schleife optimiert Blickregression und Zonenklassifikation mit gelabelten Trainingsdaten. Zur Testzeit werden zwei sich ergänzende Anpassungsschritte ausgeführt: Die selbstüberwachte Anpassung auf ungelabelten Bildern der Zielperson reagiert auf veränderte Bild- und Aufnahmebedingungen. Die schwach überwachte Anpassung des Zonenklassifikators nutzt anschließend wenige semantische Zonenlabels (z.\,B.\ Spiegel, Armaturenbrett, Windschutzscheibe), die in einer kurzen Einrichtungsphase gesammelt werden.
+
+Auf IVGaze (\num{44705} Bilder von 125 Personen) erreicht die kombinierte Strategie einen mittleren Winkelfehler von $6,00^\circ$, verglichen mit $6,78^\circ$ für die Baseline, $6,13^\circ$ für die schwach überwachte und $6,72^\circ$ für die rein selbstüberwachte Anpassung. Der Anteil der Schätzungen mit einem Fehler unter $6^\circ$ steigt von 49,95\,\% auf 58,2\,\%. Die beiden Anpassungsstufen ergänzen sich also: Die Selbstüberwachung behandelt die Bildverteilung, während die schwachen Zonenlabels personenspezifische Information liefern.
+
+\subsection{Weitere Ansätze zur labeleffizienten Personalisierung}
+\label{subsec:tta_weitere}
+Mehrere neuere Arbeiten verfolgen ähnliche Ziele mit anderen Mitteln:
+\begin{itemize}
+  \item \textbf{TPGaze}~\cite{liu2024tpgaze} passt zur Testzeit nur einen meta-gelernten Prompt mit weniger als 1\,\% der Parameter eines ResNet-18 an. Als unüberwachtes Ziel genügt ein einfacher Symmetrieverlust. Nach Angabe der Autoren ist die Anpassung bis zu zehnmal schneller als bei den verglichenen Verfahren; ausgewertet wird sie in vier datensatzübergreifenden Settings.
+  \item \textbf{ELF-UA}~\cite{wu2024elfua} formuliert die \emph{labelfreie} Nutzeranpassung als eigenständiges Problem: Wenige ungelabelte Bilder der Zielperson genügen für die Anpassung. Das Meta-Learning verwendet eine Generalisierungsschranke aus der Domänenadaption als Verlustfunktion.
+  \item \textbf{PIGaze}~\cite{wang2026pigaze} gewinnt Kalibrierdaten im Fahrzeug automatisch aus der geometrischen Konsistenz des Blicks auf bekannte Zonen wie Spiegel und Windschutzscheibe (Selbstkalibrierung). Ein vortrainiertes Basismodell dient als \emph{eingefrorener} Merkmalsextraktor, auf dem ein leichtgewichtiger Adapter die relative Blickabbildung lernt. Auf IVGaze und LBW übertrifft PIGaze Fine-Tuning-Ansätze.
+\end{itemize}
+
+\paragraph{Grenzen und Abgrenzung.}
+Die genannten Verfahren zielen darauf, den Kalibrieraufwand durch ungelabelte oder schwach gelabelte Daten zu verringern. Sie sind meist auf 3D-Blickrichtungen ausgerichtet und im Fall von TTP-GE und PIGaze auf den Fahrzeugbereich mit festen semantischen Zonen. Ihre Anpassungsverfahren (Meta-Training, Online-Updates, EMA-Zielnetze) sind zudem deutlich aufwendiger als einfaches Kopftraining. Allgemeine vortrainierte Repräsentationen wie DINOv2, CLIP oder MAE werden nicht als Backbones untersucht. Die vorliegende Arbeit verfolgt den ergänzenden Ansatz einer \emph{überwachten} Personalisierung mit kontinuierlichen Bildschirmkoordinaten aus einer kurzen Kalibrierung. Bemerkenswert ist allerdings, dass PIGaze -- wie die vorliegende Arbeit -- einen eingefrorenen Backbone mit einem leichtgewichtigen, personenspezifisch trainierten Modul kombiniert.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Vergleich von TTP-GE und der vorliegenden Arbeit.}
+  \label{tab:ttpge_vergleich}
+  \begin{tabularx}{\textwidth}{L{3.0cm} Y Y}
+    \toprule
+    \textbf{Aspekt} & \textbf{TTP-GE~\cite{nagpure2025ttpge}} & \textbf{Diese Arbeit} \\
+    \midrule
+    Paradigma & Adaption zur Testzeit mit ungelabelten Bildern und schwachen Zonenlabels & Überwachte Personalisierung mit gelabelten Kalibrierdaten \\
+    Backbone & GazeDPTR~V2: zwei ResNet-18-Ströme mit Transformer-Fusion & ResNet18-Referenz sowie DINOv2-, CLIP- und MAE-basierte Repräsentationen \\
+    Labels & Ungelabelte Bilder und neun semantische Blickzonen & Kontinuierliche Bildschirmkoordinaten; \code{WAIT}-Frames werden ausgeschlossen \\
+    Anpassung & Meta-Training, Online-Updates, EMA-Zielnetz & Reines Kopftraining; PEFT-Varianten als Alternativen \\
+    Domäne & Fahrerüberwachung im Fahrzeug & Webcam-Nutzung vor einem Bildschirm \\
+    Ergebnis & $6,00^\circ$ auf IVGaze & Normierter Diagonalfehler, nicht direkt vergleichbar \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\section{Datenqualität, Label-Rauschen und zeitliche Dynamik}
+\label{sec:label_noise}
+% ------------------------------------------------------------------------------
+Überwachte Personalisierung setzt voraus, dass jedes Kalibrierbild mit dem Punkt gelabelt ist, auf den die Person in diesem Moment tatsächlich blickt. In der Praxis gilt diese Annahme nur näherungsweise. Abweichungen zwischen Label und tatsächlichem Blick wirken als \emph{Label-Rauschen} und sind bei kurzen Kalibrierungen besonders kritisch, da jedes fehlerhafte Beispiel einen größeren Anteil der Trainingsdaten ausmacht.
+
+\subsection{Datenqualität im Eye-Tracking}
+\label{subsec:datenqualitaet}
+In der Eye-Tracking-Forschung wird die Datenqualität üblicherweise durch drei Größen beschrieben: \emph{Genauigkeit} (systematische Abweichung zwischen gemessenem und wahrem Blickpunkt), \emph{Präzision} (Streuung wiederholter Messungen) und \emph{Datenverlust}. Niehorster et al.~\cite{niehorster2026quality} geben einen aktuellen Überblick darüber, wie diese Größen operationalisiert werden, und stellen Werkzeuge zu ihrer Berechnung bereit. Lernbasierte Verfahren fügen eine weitere Dimension hinzu: die Qualität der \emph{Trainingslabels}. Fehlerhafte Labels verfälschen nicht nur die Auswertung, sondern auch das gelernte Modell selbst.
+
+\subsection{Reaktionslatenz und sakkadische Verzögerung}
+\label{subsec:latenz}
+Erscheint ein Kalibrierziel an einer neuen Position, folgt der Blick nicht sofort. Zwischen dem Erscheinen des Ziels und dem Beginn der Sakkade vergeht eine physiologische Latenz. In einer Prosakkaden-Aufgabe auf Smartphones messen Valliappan et al.~\cite{valliappan2020smartphone} eine mittlere Sakkadenlatenz von \SI{210}{\milli\second} (Median \SI{167}{\milli\second}), was mit den in früheren Studien beobachteten \SIrange{200}{250}{\milli\second} übereinstimmt. Darauf folgen die Dauer der Sakkade selbst und gegebenenfalls Korrektursakkaden, bis das Auge das Ziel stabil fixiert.
+
+Frames, die in diesem Übergangsintervall aufgenommen werden, tragen das Label der \emph{neuen} Zielposition, zeigen aber einen Blick, der noch auf die \emph{alte} Position oder irgendwo dazwischen gerichtet ist. Bei einer Aufnahmerate von \SI{30}{fps} betrifft allein eine Latenz von etwa \SI{200}{\milli\second} rund sechs Frames pro Zielsprung. Je häufiger das Ziel springt, desto größer ist der Anteil systematisch falsch gelabelter Frames.
+
+\subsection{Präventive Filterung bei der Datenerfassung}
+\label{subsec:phase_logging}
+Eine naheliegende Gegenmaßnahme besteht darin, Frames unmittelbar nach einem Zielwechsel zu verwerfen. Valliappan et al.~\cite{valliappan2020smartphone} verwerfen beispielsweise pauschal die ersten \SI{800}{\milli\second} nach dem Beginn jedes Stimulus, um die Sakkadenlatenz zu berücksichtigen. Ein solches festes Zeitfenster ist leicht umzusetzen, beruht aber auf einer Annahme über die Dauer der Übergangsphase und wird meist nicht als eigener Untersuchungsgegenstand ausgewertet.
+
+Die vorliegende Arbeit verfolgt einen verwandten, aber expliziteren Ansatz: Das Aufnahmeprotokoll speichert für jeden Frame die aktuelle \emph{Phase} des Kalibrierziels, nämlich \code{WAIT} (eine kurze Wartephase von \SI{0,5}{\second} unmittelbar nach einem Zielsprung) oder \code{MOVE} (das Ziel bewegt sich während der folgenden \SI{4,5}{\second} kontinuierlich). Frames der \code{WAIT}-Phase lassen sich so deterministisch und reproduzierbar erkennen und vor dem Training ausschließen; in den aufgenommenen Sitzungen betrifft das etwa 10\,\% der Frames. Anders als ein festes Zeitfenster erlaubt die Phasenprotokollierung, die Wirkung dieses Ausschlusses gezielt zu untersuchen, also Modelle, die mit und ohne bereinigte Daten trainiert wurden, unter sonst gleichen Bedingungen zu vergleichen.
+
+\subsection{Nachträgliche Filterung und robuste Lernverfahren}
+\label{subsec:dmrf}
+Präventiven Verfahren stehen Verfahren gegenüber, die fehlerhafte Labels \emph{nach} der Datenerfassung anhand statistischer oder modellbasierter Kriterien erkennen.
+
+\paragraph{DMRF.}
+Jiang et al.~\cite{jiang2026dmrf} schlagen mit \emph{Dynamic Multi-model Regression Filtering} (DMRF) ein allgemeines Verfahren zur Filterung von Label-Rauschen in Regressionsaufgaben vor. Es behandelt ein Henne-Ei-Problem: Verrauschte Labels verzerren die Modelle, mit denen das Rauschen geschätzt wird, und verzerrte Modelle führen wiederum zu falschen Rauschschätzungen. DMRF kombiniert drei Komponenten:
+\begin{enumerate}
+  \item eine \emph{Aufwärmfilterung} auf Basis einer Verteilungsfunktion der geschätzten Fehler,
+  \item eine \emph{dynamische Modellauswahl} nach einem Korrelationskriterium,
+  \item einen \emph{Rückhol-Schritt} (Data Recall), der Beispiele mit kleinem Verlust in die saubere Teilmenge zurückführt.
+\end{enumerate}
+Neben 15 Benchmarks aus UCI und KEEL und einer Aufgabe zur Altersschätzung wird DMRF in das Blickschätzungsverfahren L2CS-Net integriert. Auf einem vorverarbeiteten MPIIGaze-Datensatz mit \num{45000} Bildern und Leave-one-person-out-Evaluation sinkt der mittlere Winkelfehler von $3,92^\circ$ auf $3,85^\circ$, wobei 74,3\,\% der Daten erhalten bleiben. Der Code ist öffentlich verfügbar.
+
+\paragraph{SeeTN.}
+Peng et al.~\cite{peng2026seetn} untersuchen als Erste systematisch den Einfluss von Label-Rauschen auf die Domänengeneralisierung in der Blickschätzung. In einem Vorexperiment werden 10, 20 und 30\,\% der Gaze360-Labels mit starkem Gaußrauschen verfälscht; dadurch steigt der datensatzübergreifende Fehler einer ResNet-18-Baseline auf MPIIGaze von $7,94^\circ$ auf $12,17^\circ$ (20\,\%) bzw.\ $14,38^\circ$ (30\,\%). Das vorgeschlagene Framework \emph{See-Through-Noise} konstruiert einen semantischen Embedding-Raum, unterscheidet verrauschte von sauberen Beispielen anhand der Konsistenz zwischen Merkmalen und Labels und überträgt blickrelevante Information von sauberen auf verrauschte Beispiele.
+
+\paragraph{Präventiv vs.\ korrektiv.}
+Nachträgliche Verfahren wie DMRF und SeeTN erkennen fehlerhafte Labels aus den Daten selbst und können daher auch unvorhergesehene Fehlerquellen erfassen. Sie benötigen jedoch ausreichend viele Beispiele für eine zuverlässige Schätzung, sind rechenaufwendiger und wurden bisher auf Datensätzen auf Populationsebene ausgewertet, nicht auf kurzen personenspezifischen Kalibrierungen. Präventive Verfahren wie die Phasenprotokollierung erfassen dagegen nur eine \emph{bekannte}, protokollbedingte Fehlerquelle, dafür aber deterministisch und ohne zusätzliches Modell. Beide Ansätze ergänzen sich daher (\cref{tab:dmrf_vergleich}).
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Vergleich von nachträglicher Filterung (DMRF) und präventiver Phasenprotokollierung.}
+  \label{tab:dmrf_vergleich}
+  \begin{tabularx}{\textwidth}{L{3.0cm} Y Y}
+    \toprule
+    \textbf{Kriterium} & \textbf{DMRF~\cite{jiang2026dmrf}} & \textbf{Diese Arbeit} \\
+    \midrule
+    Strategie & Korrektiv: Schätzung und Filterung nach der Erfassung & Präventiv: Protokollierung der Aufnahmephase \\
+    Erkennung & Modellvorhersagen, Fehlermuster, dynamische Modellauswahl & Explizite \code{WAIT}/\code{MOVE}-Labels \\
+    Erfasste Fehler & Beliebige statistisch auffällige Beispiele & Nur die protokollbedingte Übergangsphase \\
+    Erhaltene Daten & 74,3\,\% (MPIIGaze) & Ca.\ 90\,\% \\
+    Setting & Populationsebene, Leave-one-person-out & Personenspezifische Webcam-Kalibrierung \\
+    Zusatzaufwand & Iteratives Training mehrerer Regressionsmodelle & Kein zusätzliches Modell \\
+    Ergebnis & $3,92^\circ \rightarrow 3,85^\circ$ & Normierter Diagonalfehler, nicht direkt vergleichbar \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\section{Vergleich und kritische Diskussion bestehender Ansätze}
+\label{sec:vergleich}
+% ------------------------------------------------------------------------------
+\Cref{tab:sota_vergleich} fasst die zentralen Arbeiten dieses Kapitels entlang der für diese Arbeit wichtigsten Dimensionen zusammen: Ziel und Paradigma, verwendete Repräsentation, Art der Personalisierung und Umgang mit der Labelqualität.
+
+\begin{table}[htbp]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \caption{Systematischer Vergleich zentraler Arbeiten. Die berichteten Fehler stammen aus unterschiedlichen Protokollen und Metriken und sind nicht direkt vergleichbar.}
+  \label{tab:sota_vergleich}
+  \begin{tabularx}{\textwidth}{L{2.3cm} L{2.4cm} L{2.6cm} L{2.6cm} Y L{1.9cm}}
+    \toprule
+    \textbf{Arbeit} & \textbf{Ziel / Paradigma} & \textbf{Repräsentation} & \textbf{Personalisierung} & \textbf{Labelqualität} & \textbf{Ergebnis} \\
+    \midrule
+    iTracker~\cite{krafka2016itracker} & 2D-Blick, mobil & AlexNet-ähnliche CNN-Ströme & SVR, bis zu 13 Punkte & -- & \SI{1,34}{\centi\metre} (Smartphone) \\
+    FAZE~\cite{park2019faze} & Few-Shot & DenseNet-DT-ED, überwacht & MAML, $k \le 256$ & -- & $3,14^\circ$ ($k=9$) \\
+    SPAZE~\cite{linden2019spaze} & Few-Shot & CNN, latente Personenparameter & Kleines Optimierungsproblem & -- & $2,70^\circ$ ($k=9$) \\
+    Chen \& Shi~\cite{chen2020offset} & Offset-Kalibrierung & CNN & Bias aus einem einzigen Blickpunkt & -- & bis zu 10\,\% besser \\
+    Valliappan~\cite{valliappan2020smartphone} & Smartphone-Tracking & CNN, vortrainiert auf GazeCapture & Fine-Tuning + Regression, ca.\ 30\,s & Feste 800-ms-Verwerfung & \SI{0,46}{\centi\metre} \\
+    CRGA~\cite{wang2022crga} & Unüberwachte DA & ResNet (ImageNet) & Pseudo-Labels & -- & bis zu 55,8\,\% besser \\
+    UniGaze~\cite{qin2026unigaze} & Generalisierung & MAE-ViT, 1,6~Millionen Gesichter & Vollständiges Fine-Tuning & -- & $4,65$--$5,86^\circ$ (DG) \\
+    CLIP-Gaze~\cite{yin2024clipgaze} & Generalisierung & CLIP (eingefroren) + ResNet-18 & -- & Blickirrelevante Faktoren & $6,97^\circ$ (DG) \\
+    GazeCLIP~\cite{wang2026gazeclip} & Überwachte Regression & CLIP-ResNet-50 (feinabgestimmt) & -- & -- & $3,5^\circ$ (MPIIFaceGaze) \\
+    TTP-GE~\cite{nagpure2025ttpge} & Adaption zur Testzeit & GazeDPTR~V2 & Selbst- + schwach überwacht & -- & $6,00^\circ$ (IVGaze) \\
+    TPGaze~\cite{liu2024tpgaze} & Adaption zur Testzeit & ResNet-18 & Prompt (<1\,\% der Parameter) & -- & -- \\
+    DMRF~\cite{jiang2026dmrf} & Filterung von Label-Rauschen & L2CS-Net & -- & Nachträglich, modellbasiert & $3,85^\circ$ (MPIIGaze) \\
+    SeeTN~\cite{peng2026seetn} & Robuste Generalisierung & ResNet-18/50 & -- & Nachträglich, merkmalsbasiert & -- \\
+    \midrule
+    \textbf{Diese Arbeit} & Webcam-Personalisierung & ResNet18, DINOv2, CLIP, MAE & Nur Kopf, PEFT; \SIrange{90}{120}{\second} & Präventiv, Phasenprotokollierung & Normierter Diagonalfehler \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{Kritische Diskussion.}
+Aus dem Vergleich lassen sich vier übergreifende Beobachtungen ableiten:
+\begin{enumerate}
+  \item \textbf{Repräsentation und Personalisierung werden getrennt untersucht.} Arbeiten zu großskalig vortrainierten Modellen (UniGaze, CLIP-Gaze, GazeCLIP) zielen auf Generalisierung über Datensätze hinweg und verwenden vollständiges Fine-Tuning auf umfangreichen Trainingsdaten. Arbeiten zur Personalisierung (FAZE, SPAZE, Chen \& Shi) stützen sich dagegen auf aufgabenspezifisch trainierte CNNs. Wie gut sich allgemeine vortrainierte Repräsentationen mit wenigen Kalibrierdaten personalisieren lassen, bleibt offen.
+  \item \textbf{Wenige Parameter genügen oft.} Bias-Kalibrierung, niedrigdimensionale Personenparameter, Prompt-Tuning und eingefrorene Basismodelle mit Adaptern (PIGaze) zeigen übereinstimmend, dass sich ein großer Teil des personenspezifischen Fehlers durch eine kleine Zahl angepasster Parameter erklären lässt. Kumar et al.~\cite{kumar2022finetuning} liefern dafür eine allgemeine Begründung.
+  \item \textbf{Die Labelqualität wird meist nachträglich behandelt.} DMRF und SeeTN filtern oder gewichten verrauschte Labels auf Datensätzen auf Populationsebene. Protokollbedingte Fehler in kurzen Kalibrierungen werden, wenn überhaupt, über feste Zeitfenster behandelt (Valliappan et al.), ohne ihren Einfluss systematisch zu untersuchen.
+  \item \textbf{Die Ergebnisse sind kaum vergleichbar.} Die Arbeiten berichten Winkelfehler in Grad, Abstände in Zentimetern oder relative Verbesserungen und verwenden unterschiedliche Datensätze, Splits und Protokolle. Ein Winkelfehler lässt sich nur bei bekannter Geometrie (Abstand, Bildschirmgröße) in einen Bildschirmfehler umrechnen. Die in dieser Arbeit verwendete Metrik, der auf die Bildschirmdiagonale normierte euklidische Fehler, ist daher mit den Werten der Literatur nicht direkt vergleichbar. Die Zahlen in \cref{tab:sota_vergleich} dienen der Orientierung, nicht als Rangfolge.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\section{Forschungslücken und Überleitung zur vorliegenden Arbeit}
+\label{sec:luecken}
+% ------------------------------------------------------------------------------
+\subsection{Identifizierte Forschungslücken}
+\label{subsec:luecken}
+Die Analyse des Stands der Technik zeigt vier Forschungslücken, die die vorliegende Arbeit adressiert:
+
+\begin{enumerate}[label=\textbf{F\arabic*:}, leftmargin=*, align=left]
+  \item \textbf{Dateneffiziente Personalisierung allgemeiner vortrainierter Modelle.}
+  Großskalig vortrainierte Repräsentationen (DINOv2, CLIP, MAE oder UniGaze) wurden für die Blickschätzung bisher vor allem mit vollständigem Fine-Tuning auf umfangreichen Datensätzen untersucht. Systematische Vergleiche dieser Repräsentationen in einem Personalisierungssetting mit nur wenigen Minuten Webcam-Kalibrierung fehlen.
+
+  \item \textbf{Parametereffiziente Anpassung zur Personalisierung.}
+  Obwohl mehrere Arbeiten zeigen, dass wenige angepasste Parameter den größten Teil des personenspezifischen Fehlers erfassen, wurden reines Kopftraining, Adapter und LoRA als Personalisierungsstrategien in der Blickschätzung kaum systematisch verglichen.
+
+  \item \textbf{Labelqualität kurzer Kalibrierungen.}
+  Sakkadenlatenz und Zielwechsel führen in Kalibrierdaten zu systematisch falsch gelabelten Frames. Bestehende Arbeiten behandeln Label-Rauschen meist nachträglich auf Populationsebene oder verwerfen feste Zeitfenster. Wie sich ein expliziter, protokollbasierter Ausschluss solcher Frames auf die Personalisierung auswirkt, wurde noch nicht systematisch untersucht.
+
+  \item \textbf{Realistische Evaluation unter Webcam-Bedingungen.}
+  Viele Ergebnisse beruhen auf Benchmarks mit kontrollierten Bedingungen oder auf framebasierten Zufallssplits, die die Generalisierung überschätzen können. Der Einfluss praktischer Faktoren wie Betriebssystem, Brille, Hintergrund und Kalibrierdauer auf die Personalisierung ist kaum dokumentiert.
+\end{enumerate}
+
+\subsection{Überleitung zur vorliegenden Arbeit}
+\label{subsec:ueberleitung}
+Die vorliegende Arbeit adressiert diese Lücken mit einer integrierten Personalisierungspipeline für webcam-basiertes Eye-Tracking:
+
+\begin{itemize}
+  \item \textbf{Eingefrorener Backbone mit leichtgewichtigem Regressionskopf (F1, F2):} Vortrainierte Repräsentationen werden als eingefrorene Merkmalsextraktoren verwendet; die Merkmale werden zwischengespeichert, und nur ein kompakter MLP-Regressionskopf wird personenspezifisch trainiert. ResNet18 dient als Referenz und wird mit DINOv2-, CLIP- und MAE-basierten Repräsentationen verglichen. Parametereffiziente Varianten werden untersucht, soweit die Architektur es erlaubt.
+  \item \textbf{Phasenprotokollierung und präventive Bereinigung (F3):} Das Aufnahmeprotokoll speichert die \code{WAIT}- und \code{MOVE}-Phasen des Kalibrierziels. Dadurch lässt sich die Wirkung des Ausschlusses von Übergangsframes kontrolliert untersuchen, indem Modelle, die auf ursprünglichen und auf bereinigten Daten trainiert wurden, unter sonst gleichen Bedingungen verglichen werden.
+  \item \textbf{Systematische Ablationen:} Batchgröße, Lernrate, trainierbare Schichten, Aktivierungs- und Verlustfunktionen (einschließlich einer distanzgewichteten L1-Variante) sowie die Datensatzgröße werden mit wiederholten Läufen und Konfidenzintervallen untersucht.
+  \item \textbf{Personendisjunkte und webcam-spezifische Evaluation (F4):} Die Basismodelle werden mit dem personendisjunkten Split \code{norm\_subject} bewertet. Die Personalisierung wird über mehrere Aufnahmesitzungen mit wechselndem Betriebssystem, Brille, Hintergrund und wechselnder Kalibrierdauer ausgewertet.
+\end{itemize}
+
+Die Methodik wird in Kapitel~3 beschrieben, die Ergebnisse werden in Kapitel~4 vorgestellt und in Kapitel~5 im Hinblick auf die in Kapitel~1 formulierten Forschungsfragen diskutiert.
+
+% ==============================================================================
+\renewcommand{\bibname}{Literaturverzeichnis}
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}

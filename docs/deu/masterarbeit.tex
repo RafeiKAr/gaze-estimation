@@ -1,0 +1,33 @@
+% ==============================================================================
+% masterarbeit.tex – Hauptdatei der gesamten Masterarbeit (deutsch)
+%
+% PDF erzeugen (in diesem Ordner):   python build_thesis.py masterarbeit.tex
+%
+% Jedes Kapitel liegt als eigene Datei in kapitel/. Ein Kapitel kann zum
+% Testen mit % auskommentiert werden; Verweise darauf erscheinen dann als ??.
+% ==============================================================================
+\documentclass[
+  11pt, a4paper, oneside, DIV=12, BCOR=8mm, parskip=half,
+  headings=normal, bibliography=totoc, listof=totoc
+]{scrreprt}
+
+\input{preamble.tex}
+
+\begin{document}
+
+\input{kapitel/00_vorspann.tex}            % Titelblatt bis Abkürzungsverzeichnis
+\input{kapitel/01_einleitung.tex}          % Kapitel 1
+\input{kapitel/02_stand_der_technik.tex}   % Kapitel 2
+\input{kapitel/03_methodik.tex}            % Kapitel 3
+\input{kapitel/04_experimente_ergebnisse.tex} % Kapitel 4
+\input{kapitel/05_diskussion.tex}          % Kapitel 5
+\input{kapitel/06_fazit_ausblick.tex}      % Kapitel 6
+
+\renewcommand{\bibname}{Literaturverzeichnis}
+\bibliographystyle{unsrtnat_de}
+\bibliography{references}
+
+\input{kapitel/07_anhang.tex}              % Anhang
+\input{kapitel/08_erklaerung.tex}          % Eidesstattliche Erklärung
+
+\end{document}

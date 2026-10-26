@@ -1,192 +1,149 @@
-# Data-Efficient Personalization for Webcam-Based Eye Tracking
+# Dateneffiziente Personalisierung für webcam-basiertes Eye-Tracking
 
-Master thesis project (Technische Informatik) – *Dateneffiziente Personalisierung für webcam-basiertes Eye-Tracking mithilfe vortrainierter Bildverarbeitungsmodelle*.
+Masterarbeit (Technische Informatik), Khaled Rafei.
 
-A ResNet-18 pretrained on ImageNet is used as a (mostly frozen) feature extractor. A small regression head predicts the 2-D gaze point on the screen. The head is first trained on GazeCapture and then **personalized** with a few minutes of webcam recordings of one person.
+Ein auf ImageNet vortrainiertes **ResNet-18** bleibt eingefroren. Ein kleiner
+**Regressionskopf** sagt den Blickpunkt auf dem Bildschirm voraus. Der Kopf wird
+zuerst auf **GazeCapture** trainiert (Basismodell) und danach mit wenigen Minuten
+eigener Webcam-Aufnahmen **personalisiert**.
 
 ---
 
-## 1. Overview
+## 1. Schnellstart
 
-| Part | What it does | Main files |
+```powershell
+cd F:\project\Venv\gaze-estimation
+venv\Scripts\activate              # virtuelle Umgebung aktivieren
+jupyter notebook notebooks\Masterarbeit.ipynb
+```
+
+Das Notebook liegt in `notebooks/` und arbeitet automatisch im Projektordner.
+Im Notebook die drei Zellen nacheinander ausführen:
+
+| Zelle | Inhalt | Ergebnis |
 |---|---|---|
-| Data preparation | download GazeCapture, build `labels.csv` / `norm_labels.csv`, subject and random splits | `main.py` |
-| Model | ResNet-18 + MLP head (512→512→256→128→2), output activation, L1 / sensitive loss, training loop with early stopping | `model.py` |
-| Data loading | split CSV → images → tensors, optional cached backbone features, random subsets, validation set | `dataset.py` |
-| Metric & baselines | diagonal error (Euclidean RMSE / √2), constant and random baselines on the same subset | `metrics.py` |
-| Experiments | hyperparameter sweeps with 5 repeats and 98 % confidence intervals | `exp.py`, `train.py` |
-| Spatial analysis | centre / edge / corner errors, Gaussian error heat maps | `spatial_analysis.py`, `notebooks/visualization.py` |
-| Personalization | recording tools (webcam + moving target) and per-session training | `personalization/`, `notebooks/personal_compare.ipynb` |
-
-### Evaluation metric
-
-```
-E_diag = 100 * sqrt( mean_i ||p̂_i − p_i||² ) / sqrt(2)      [% of the screen diagonal]
-```
-
-> **Bug fix (Oct. 2026).** Older code computed `sqrt(sklearn.mean_squared_error(t, p)) / sqrt(2)`. For 2-D targets sklearn averages over x **and** y, so all *model* errors were exactly √2 too small (baselines were correct). All code now uses `metrics.py`. Old logged model values convert exactly: `E_correct = sqrt(2) * E_old`.
+| 1 | Daten prüfen, **Basismodelle** auf GazeCapture trainieren (`norm_subject`, `norm_random`) und mit den gespeicherten vergleichen | `models/base/`, `models/base_neu/` |
+| 2 | *(optional)* Hyperparameter-Tabellen und Abbildungen zu GazeCapture | Tabellen, `results/figures/` |
+| 3 | **Personalisierung** der Sessions 01–09 und 19–27 (Tabelle 4.13), optional E1b/E2/E3, Vergleich mit den Werten der Arbeit | `results/personal/neu_runs.jsonl` |
 
 ---
 
-## 2. Directory structure
+## 2. Ordnerstruktur
 
 ```
 gaze-estimation/
-├── main.py                 # dataset download, labels.csv, norm_labels.csv, splits
-├── dataset.py              # GazeDataset, DataLoaders, embedding cache, subsets
-├── model.py                # model, losses, evaluate/predict, train_model
-├── metrics.py              # diagonal error + baselines (single source of truth)
-├── exp.py                  # hyperparameter sweeps (5 repeats, 98 % CI)
-├── train.py                # one training run from the command line
-├── personal_exp.py         # personalization runs per session (E1-E3), resumable
-├── train_base.py           # E0: base models for personalization (models/base/)
-├── session_design.py       # coverage / transition analysis, cleaned labels
-├── model_train.py          # older stand-alone training script (kept)
-├── spatial_analysis.py     # Fig. 4: centre / edge / corner analysis
-├── plot_targets.py         # Fig. 4.1: raw vs. normalized gaze targets
-├── requirements.txt
-├── dataset/                # images/ (not in git), labels.csv, norm_labels.csv
-├── splits/                 # norm_subject_*.csv, norm_random_*.csv
-├── personalization/
-│   ├── base_Code.py        # Gen 1 recording (sessions 01–04)
-│   ├── base_Code_rand.py   # Gen 2 recording (sessions 05–09)
-│   ├── base_Code_corner.py # Gen 3 recording (sessions 10–18, discarded)
-│   └── <session>/          # images2/, norm_labels.csv, norm_labels_clean.csv
+├── README.md              diese Datei
+├── requirements.txt       benötigte Python-Pakete
+│
+├── main.py                GazeCapture laden, Ziele normieren, Splits erstellen
+├── dataset.py             Daten laden, Merkmals-Cache, Teilmengen
+├── model.py               Modell (ResNet-18 + Kopf), Verluste, Training
+├── metrics.py             Diagonalfehler und Baselines
+├── exp.py                 Hyperparameter-Studie (5 Wiederholungen, 98-%-KI)
+├── train_base.py          E0: die zwei Basismodelle trainieren und speichern
+├── personal_exp.py        E1–E3: Personalisierung der Sessions
+├── session_design.py      Abdeckung, Übergangsbilder, bereinigte Labels
+├── spatial_analysis.py    Fehler in Mitte / Rand / Ecke, Abbildung 4.3
+├── plot_targets.py        Abbildung 4.1 (rohe und normierte Ziele)
+├── auswertung.py          Tabellen und Vergleiche für das Notebook
+│
 ├── notebooks/
-│   ├── Compare_notebook.ipynb   # GazeCapture: training, baselines, sweeps, spatial analysis
-│   ├── personal_compare.ipynb   # personalization of the 18 sessions + analyses
-│   ├── notebook_alles.ipynb     # archive of all earlier notebooks (with outputs)
-│   ├── visualization.py         # interactive cursor heat map
-│   └── baseline_personal.py     # evaluate a base model on one session
-├── models/                 # checkpoints (*.path, not in git)
-└── results/
-    ├── exp_reproduction/   # exp_results.json, results_experiment_all.txt
-    ├── heatmap/            # predictions for the spatial analysis
-    ├── personal/           # personalization results
-    └── figures/            # figures generated by the notebooks
+│   ├── Masterarbeit.ipynb  Haupt-Notebook: alle Experimente
+│   └── archivieren.py      alte Dateien nach archiv/ verschieben
+│
+├── dataset/               GazeCapture (images/ nicht in Git), labels.csv, norm_labels.csv
+├── splits/                norm_subject_*.csv, norm_random_*.csv
+├── personalization/       eigene Aufnahmen: <Session>/images/, norm_labels.csv,
+│                          norm_labels_clean.csv, Aufnahmeprogramme base_Code*.py
+├── models/base/           die zwei Basismodelle der Arbeit (.pt) + Angaben (.json)
+├── results/
+│   ├── exp_reproduction/  exp_results_all.json (Hyperparameter-Studie)
+│   ├── heatmap/           Vorhersagen für die räumliche Analyse
+│   ├── personal/          personal_runs.jsonl (Ergebnisse der Arbeit), predictions/
+│   └── figures/           Abbildungen
+├── cache/                 gespeicherte ResNet-Merkmale (automatisch, nicht in Git)
+├── demo/                  Web-Demo (eigene README)
+└── archiv/                alte Dateien (nach archivieren.py)
 ```
 
-Sessions used in the thesis: **Gen 1 = 01–04, Gen 2 = 05–09, Gen 4 = 19–27** (18 sessions). Gen 3 (10–18) was discarded; its folders are kept unchanged.
+**Aufnahmeprogramme:** `base_Code.py` = Gen 1 (Sessions 01–04, Punkt bewegt sich
+gleichmäßig), `base_Code_rand.py` = Gen 4 (Sessions 19–27, 0,5 s WAIT + 4,5 s MOVE,
+90 % der Startpunkte in den Ecken). Gen 3 (Sessions 10–18) wurde verworfen.
 
 ---
 
 ## 3. Installation
 
-```bash
+```powershell
 python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
-# optional: install torch/torchvision with CUDA from pytorch.org first
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
----
+GazeCapture einmal vorbereiten (braucht `kaggle.json`):
 
-## 4. Reproduce the experiments
-
-### 4.1 Data
-
-```bash
-python main.py        # downloads GazeCapture (Kaggle, needs kaggle.json),
-                      # writes dataset/labels.csv, dataset/norm_labels.csv and splits/
+```powershell
+python main.py
 ```
-
-### 4.2 Baselines and hyperparameter sweeps (GazeCapture)
-
-```bash
-python exp.py --experiment baseline                 # full-data and same-subset baselines
-python exp.py --experiment all --repeats 5          # all sweeps (layers: fc_only + fc_layer4)
-python exp.py --experiment all --include-resnet     # additionally full fine-tuning (fc_resnet, slow)
-python exp.py --experiment trainable_layers --include-resnet   # only the layer sweep, all 3 modes
-python exp.py --experiment learning_rate            # one sweep only
-python exp.py --experiment all --sample-seed 0 --val-size 200   # recommended for NEW runs
-python exp.py --experiment baseline --quick         # smoke test
-```
-
-Results are written to `results/exp_reproduction/exp_results.json`.
-`--sample-seed` draws random train/test subsets instead of the first N rows (the split CSVs are sorted by subject). `--val-size` adds a subject-disjoint validation set; early stopping then uses validation data and the reported value is the test error at the best validation epoch.
-
-Single run:
-
-```bash
-python train.py --split-type norm_subject --train-size 1000 --test-size 200 \
-                --trainable-layers fc_only --activation Sigmoid --loss standard
-```
-
-### 4.3 Spatial analysis (Fig. 4)
-
-```bash
-python spatial_analysis.py --input results/heatmap/base_loss1.csv \
-                           --compare results/heatmap/base_loss2.csv --out results/figures
-python -m notebooks.visualization --input results/heatmap/base_loss1.csv   # interactive
-```
-
-### 4.4 Personalization (`personal_exp.py`)
-
-**Easiest way (also on a CPU):** open `notebooks/personal_compare.ipynb` and run all cells.
-It runs E0, the feature cache, E1, E1b, E2 and E3 in the right order and creates all tables.
-By default the head is trained on cached backbone features (`--features cached`): the frozen
-backbone is evaluated only once per session (cache in `cache/personal/`), so a run takes seconds.
-
-Requirements: the session folders `personalization/<session>/` with `images2/` (or `images/`)
-and `norm_labels.csv`, and the base models from step E0 (`models/base/base_<split>.pt`).
-
-Every finished run is appended at once to `results/personal/personal_runs.jsonl`;
-an interrupted series continues where it stopped (finished runs are skipped).
-All seeds are fixed; the backbone incl. BatchNorm statistics stays frozen (`--bn frozen`).
-Test predictions are stored in `results/personal/predictions/` (for the region analysis).
-
-| ID | Purpose | Command | Runs |
-|---|---|---|---|
-| E0 | base models (best hyperparameter config, 5 seeds, best by validation) | `python train_base.py` | 2 x 5 |
-| E1 | all 18 sessions, both base models | `python personal_exp.py --sessions all --base norm_subject norm_random` | 36 |
-| E1b | Gen 4 with cleaned labels (WAIT removed) | `python personal_exp.py --sessions gen4 --labels clean` | 9 |
-| E2 | data loading: random / sequential / two videos (sessions 21, 22, 3 seeds) | `python personal_exp.py --sessions 21 22 --split random --seeds 42 43 44`<br>`python personal_exp.py --sessions 21 22 --split sequential --seeds 42 43 44`<br>`python personal_exp.py --split two_videos --pairs 21:22,22:21 --seeds 42 43 44` | 6 + 6 + 6 |
-| E3 | session design: sequential split for all sessions | `python personal_exp.py --sessions all --split sequential` | 18 |
-| – | results | `python personal_exp.py --summary` (add `--latex` for the session table) | – |
-
-Session design analysis without training (coverage, transition samples) and
-correct cleaned labels for Gen 4:
-
-```bash
-python session_design.py                 # -> results/personal/session_design.csv
-python session_design.py --write-clean   # norm_labels_clean.csv = labels without WAIT frames
-```
-
-Useful options: `--dry-run` (only list the planned runs), `--gap-sec 1.0` (sequential split:
-frames dropped between the blocks), `--bn adapt` (old behaviour: BatchNorm statistics updated).
-
-`notebooks/personal_compare.ipynb` shows the same results with tables and plots
-(Sections 5–9).
 
 ---
 
-## 5. Main results (corrected metric)
+## 4. Ohne Notebook (Kommandozeile)
 
-| Setting | Model | Constant baseline (same data) |
+| Schritt | Befehl |
+|---|---|
+| Basismodelle (E0) | `python train_base.py` (vorhandene Modelle bleiben; neu: `--retrain --out-dir models/base_neu`) |
+| Alle 18 Sessions (E1) | `python personal_exp.py --sessions all --base norm_subject norm_random` |
+| Bereinigte Labels (E1b) | `python personal_exp.py --sessions gen4 --labels clean` |
+| Aufteilung der Daten (E2) | `python personal_exp.py --sessions 21 22 --split random --seeds 42 43 44`<br>`python personal_exp.py --sessions 21 22 --split sequential --seeds 42 43 44`<br>`python personal_exp.py --split two_videos --pairs 21:22,22:21 --seeds 42 43 44` |
+| Session-Design (E3) | `python personal_exp.py --sessions all --split sequential` |
+| Ergebnisse anzeigen | `python personal_exp.py --summary` |
+| Hyperparameter-Studie | `python exp.py --experiment all --sample-seed 0 --val-size 200` |
+| Bereinigte Labels schreiben | `python session_design.py --write-clean` |
+
+Unter Windows bei `personal_exp.py` zusätzlich `--num-workers 0` angeben (sonst kann das
+Laden der Bilder in mehreren Prozessen fehlschlagen; das Ergebnis ändert sich dadurch nicht).
+
+Achtung: `personal_exp.py` schreibt standardmäßig in `results/personal/personal_runs.jsonl`
+und überspringt Läufe, die dort schon stehen. Für einen echten Neu-Lauf `--out` mit
+einer neuen Datei angeben (das Notebook macht das automatisch).
+
+---
+
+## 5. Wichtigste Ergebnisse (Kapitel 4)
+
+Fehler = Diagonalfehler in % der Bildschirmdiagonale (kleiner ist besser).
+
+| Experiment | Modell | Konstant-Baseline |
 |---|---|---|
-| GazeCapture, `norm_subject`, 1000/200, FC only | 28.40 % [28.27, 28.54] | 28.23 % |
-| Base model `norm_subject` on the 18 sessions (no personalization) | 30.57 % | 30.32 % |
-| Personalization, 18 sessions, random split (E1, mean [98 % CI]) | **19.79 %** [16.18, 23.40] | 30.32 % |
-| same with base model `norm_random` | 19.59 % [15.47, 23.71] | 30.32 % |
-| Personalization, 18 sessions, sequential split (E3) | 27.93 % | 31.84 % |
-| Sessions 21/22: random / sequential / two videos (E2, 3 seeds) | 13.85 / 15.55 / 17.24 % | 30.97 / 28.67 / 32.65 % |
-| Gen 4, cleaned labels (E1b), MOVE test frames: original vs. clean | 16.72 % vs. 15.88 % | 30.51 % |
-| Best session (S02, random split) | 10.48 % | 28.49 % |
+| GazeCapture, `norm_subject`, 1000/200, nur FC | 28,39 % | 28,46 % |
+| Basismodell auf den 18 Sessions (ohne Personalisierung) | 30,57 % | 30,32 % |
+| Personalisierung, 18 Sessions, zufälliger Split (E1) | **19,79 %** | 30,32 % |
+| dasselbe mit Basismodell `norm_random` | 19,59 % | 30,32 % |
+| Personalisierung, sequenzieller Split (E3) | 27,93 % | 31,84 % |
+| Sessions 21/22: zufällig / sequenziell / zwei Videos (E2) | 13,85 / 15,55 / 17,24 % | 30,97 / 28,67 / 32,65 % |
+| Gen 4, MOVE-Testbilder: Original / bereinigt (E1b) | 16,72 / 15,88 % | 30,51 % |
+| Beste Session (S02) | 10,48 % | 28,49 % |
 
-The generic GazeCapture model stays at the level of the constant baseline (its predictions collapse towards the screen centre). Personalization reduces the error by about one third with a random split (one run ≈ 2 s on a CPU with the feature cache); with a temporal (sequential) split the gain is smaller (≈ 12 %) and vanishes in 8 of 18 sessions. Details: thesis chapter *Experiments and Results*.
-
-Figure of the raw vs. normalized gaze targets (Fig. 4.1 a/b):
-
-```bash
-python plot_targets.py --out results/figures   # -> raw_targets.png, normalized_targets.png
-```
+**Reproduzierbarkeit:** Basismodelle und Personalisierung nutzen feste Seeds.
+Die Hyperparameter-Studie (`exp.py`) hat keine festen Seeds; beim Neurechnen
+ändern sich dort die Einzelwerte leicht.
 
 ---
 
-## 6. Dataset
+## 6. Aufräumen
 
-GazeCapture – Krafka et al., *Eye Tracking for Everyone*, CVPR 2016 – <https://gazecapture.csail.mit.edu/>. The data set is **not** part of this repository.
+```powershell
+cd notebooks
+python archivieren.py               # zeigt nur an, was verschoben würde
+python archivieren.py --ausfuehren  # verschiebt alte Dateien nach archiv/
+```
 
-## Author
+Es wird nichts gelöscht. Die Liste steht in `archiv/INHALT.txt`.
 
-Khaled Rafei – Master thesis, Technische Informatik.
+---
+
+## 7. Datensatz
+
+GazeCapture – Krafka et al., *Eye Tracking for Everyone*, CVPR 2016,
+<https://gazecapture.csail.mit.edu/>. Der Datensatz ist **nicht** Teil dieses Projekts.

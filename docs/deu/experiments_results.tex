@@ -1,0 +1,1675 @@
+% ==============================================================================
+% Masterarbeit – Kapitel: Experimente und Ergebnisse (deutsche Fassung)
+% Thema:  Dateneffiziente Personalisierung für webcam-basiertes Eye-Tracking
+%         mithilfe vortrainierter Bildverarbeitungsmodelle
+% Autor:  Khaled Rafei (MatNr. 930677)
+% Datei:  experiments_results.tex (Ordner deutsch)
+% Build:  python build_chapter.py experiments_results.tex
+%         (benötigt references.bib und den Ordner figures/ neben dieser Datei)
+% Daten:  Abschnitt 4.2 und der globale Verlustvergleich: exp_results_all.json
+%         (exp.py --experiment all --sample-seed 0 --val-size 200, korrigierte
+%         Metrik, 5 Wiederholungen, 98-%-KI, Lauf vom 22.10.2026).
+%         Personalisierung (Abschnitte 4.4-4.6): personal_runs.jsonl
+%         (personal_exp.py / personal_compare.ipynb, 24.10.2026).
+% Hinweis: Inhalt, Labels und Zitierschlüssel entsprechen der englischen
+%         Fassung F:\claude\@output\experiments_results.tex.
+% ==============================================================================
+
+\documentclass[
+  11pt,
+  a4paper,
+  oneside,
+  DIV=12,
+  BCOR=8mm,
+  parskip=half,
+  headings=normal,
+  bibliography=totoc,
+  listof=totoc
+]{scrreprt}
+
+% ------------------------------------------------------------------------------
+% Kodierung & Sprache
+% ------------------------------------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english,ngerman]{babel}
+\usepackage[autostyle=true,german=quotes]{csquotes}
+
+% ------------------------------------------------------------------------------
+% Schrift & Typografie
+% ------------------------------------------------------------------------------
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.15}
+
+% ------------------------------------------------------------------------------
+% Mathematik & Einheiten
+% ------------------------------------------------------------------------------
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{icomma}                  % Dezimalkomma im Mathemodus
+\usepackage[locale=DE]{siunitx}
+
+% ------------------------------------------------------------------------------
+% Tabellen
+% ------------------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\renewcommand{\arraystretch}{1.2}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% ------------------------------------------------------------------------------
+% Abbildungen & Beschriftungen
+% ------------------------------------------------------------------------------
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\usepackage{float}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{subcaption}
+
+% ------------------------------------------------------------------------------
+% Listen, Farben, Kästen
+% ------------------------------------------------------------------------------
+\usepackage{enumitem}
+\usepackage[dvipsnames,table]{xcolor}
+
+% ------------------------------------------------------------------------------
+% Literatur (natbib + bibtex: läuft überall, kein biber nötig)
+% ------------------------------------------------------------------------------
+\usepackage[numbers,sort&compress]{natbib}
+
+% ------------------------------------------------------------------------------
+% Links & Querverweise (hyperref zuletzt, cleveref danach)
+% ------------------------------------------------------------------------------
+\usepackage[hidelinks]{hyperref}
+\usepackage[ngerman,capitalise,noabbrev]{cleveref}
+
+% ------------------------------------------------------------------------------
+% Eigene Befehle
+% ------------------------------------------------------------------------------
+\newcommand{\code}[1]{\texttt{#1}}
+\setlength{\emergencystretch}{3em}   % vermeidet zu breite Zeilen
+\newcommand{\Ediag}{E_{\mathrm{diag}}}
+% Markierung der gewählten Option in den Hyperparametertabellen
+\newcommand{\sel}{\ensuremath{^{\dagger}}}
+% hervorgehobener Hinweiskasten
+\newcommand{\notebox}[1]{%
+  \par\noindent\fcolorbox{gray!60}{gray!8}{\parbox{\dimexpr0.97\linewidth-2\fboxsep-2\fboxrule}{\small #1}}\par}
+
+% ==============================================================================
+\begin{document}
+
+\setcounter{chapter}{3}   % diese Datei ist Kapitel 4 der Arbeit
+\chapter{Experimente und Ergebnisse}
+\label{ch:results}
+
+Dieses Kapitel berichtet über die Experimente auf dem GazeCapture-Datensatz
+\cite{krafka2016itracker} und auf den eigenen Aufnahmesitzungen. Zuerst werden
+das Modell, die Daten und das Evaluationsprotokoll beschrieben
+(\cref{sec:setup}). Danach werden die Trainings-Hyperparameter
+(\cref{sec:training}), die räumliche Verteilung des Vorhersagefehlers und die
+Verlustfunktionen (\cref{sec:spatial}) sowie die Personalisierungssitzungen
+(\cref{sec:sessions,sec:loading,sec:session_design}) analysiert.
+\Cref{sec:discussion} diskutiert, was diese Ergebnisse für die weitere Arbeit
+bedeuten.
+
+Alle Werte wurden mit den Experimentprotokollen abgeglichen. Bei dieser
+Prüfung wurde ein Fehler im Auswertungscode gefunden und korrigiert
+(\cref{sec:metric}). Alle Modellfehler in diesem Kapitel werden mit der
+korrigierten Metrik angegeben.
+
+% ==============================================================================
+\section{Versuchsaufbau}
+\label{sec:setup}
+% ==============================================================================
+
+\subsection{Modell}
+\label{sec:model}
+
+\begin{itemize}[nosep]
+  \item \textbf{Backbone:} ResNet-18 \cite{he2016resnet}, vortrainiert auf
+        ImageNet (\code{ResNet18\_Weights.DEFAULT}).
+  \item \textbf{Regressionskopf:} vier vollständig verbundene Schichten
+        $512 \to 512 \to 256 \to 128 \to 2$ mit ReLU, Dropout $p=0,2$
+        nach der zweiten Schicht und einer Ausgabe-Aktivierung (Standard:
+        Sigmoid).
+  \item \textbf{Optimierer:} AdamW, Weight Decay $10^{-5}$.
+  \item \textbf{Standard-Verlust:} L1-Verlust (\code{nn.L1Loss}), siehe
+        \cref{sec:losses}.
+  \item \textbf{Early Stopping:} Geduld (Patience) von drei Epochen, höchstens
+        500 Epochen.
+\end{itemize}
+
+\subsection{Daten und Splits}
+\label{sec:data}
+
+GazeCapture enthält in der hier verwendeten Version \num{347085} gelabelte
+Frames von 262 Personen. Es werden zwei Splits verwendet:
+\begin{itemize}[nosep]
+  \item \code{norm\_subject}: personendisjunkter Split (keine Person kommt
+        sowohl in den Trainings- als auch in den Testdaten vor);
+  \item \code{norm\_random}: Split auf Frame-Ebene, dieselbe Person kann in
+        Trainings- und Testdaten vorkommen.
+\end{itemize}
+Für die Hyperparameterstudie werden \num{1000} Trainings- und \num{200}
+Testframes \emph{zufällig} aus den Split-Dateien gezogen (fester Seed 0,
+\code{--sample-seed 0}). Für \code{norm\_subject} enthält die
+Trainingsteilmenge 179 Personen und die Testteilmenge 45 Personen ohne
+Überschneidung. (Frühere Läufe verwendeten die \emph{ersten} Zeilen der
+sortierten Split-Dateien, d.\,h.\ nur fünf Trainingspersonen und eine
+Testperson; diese Läufe werden für die Tabellen nicht mehr verwendet.)
+
+\subsection{Evaluationsmetrik}
+\label{sec:metric}
+
+Alle Blickziele sind auf das Einheitsquadrat $[0,1]^2$ normiert
+(\cref{sec:normalization}). Der Fehler ist die Wurzel aus dem mittleren
+quadrierten \emph{euklidischen} Abstand zwischen Vorhersage $\hat{\bm p}_i$
+und Ziel $\bm p_i$, angegeben in Prozent der Bildschirmdiagonale $\sqrt{2}$:
+\begin{equation}
+  \Ediag \;=\; 100\cdot
+  \frac{\sqrt{\frac{1}{N}\sum_{i=1}^{N}\lVert\hat{\bm p}_i-\bm p_i\rVert_2^{2}}}{\sqrt{2}}
+  \quad[\%].
+  \label{eq:ediag}
+\end{equation}
+Ein Wert von \SI{0}{\percent} ist eine perfekte Vorhersage,
+\SI{100}{\percent} ein Fehler so groß wie die gesamte Bildschirmdiagonale.
+
+
+\subsection{Protokoll}
+\label{sec:protocol}
+
+Die Hyperparameterstudie wird mit dem Befehl
+\begin{center}
+  \code{python exp.py --experiment all --sample-seed 0 --val-size 200}
+\end{center}
+ausgeführt. Jeweils eine Achse (zum Beispiel die Batchgröße) wird verändert,
+während alle anderen Werte auf der Standardkonfiguration bleiben
+(\cref{tab:default_config}). Jede Konfiguration wird fünfmal trainiert. Das
+Early Stopping verwendet eine personendisjunkte Validierungsmenge von 200
+Frames, und angegeben wird der \emph{Test}fehler in der Epoche mit dem
+niedrigsten Validierungsfehler; die Testmenge wird also nicht für die
+Modellauswahl verwendet. Die Tabellen zeigen den mittleren Testfehler, das
+zweiseitige \SI{98}{\percent}-Konfidenzintervall (KI) des Mittelwerts
+(Student-$t$, vier Freiheitsgrade) und die mittlere Laufzeit (siehe unten).
+
+\paragraph{Was die \enquote{Laufzeit} misst.} Die Spalte \emph{Laufzeit}
+ist die tatsächlich verstrichene Zeit (Wall-Clock) \emph{eines vollständigen
+Trainingslaufs}, gemittelt über die fünf Läufe. Ein Lauf beginnt mit der
+Auswertung des untrainierten Modells (Epoche~0) und endet, wenn das Early
+Stopping das Training beendet; er umfasst alle Trainingsepochen und die
+Auswertung auf den Trainings-, Validierungs- und Testdaten nach jeder Epoche.
+Sie ist \emph{nicht} die Zeit pro Epoche und enthält \emph{nicht} das Laden
+der Bilder oder die Berechnung der zwischengespeicherten Backbone-Merkmale,
+die einmal vor dem Lauf erfolgt. Da das Early Stopping die Läufe nach
+unterschiedlich vielen Epochen beendet, spiegelt die Zeit auch wider, wie
+lange sich eine Konfiguration noch verbessert.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Standardkonfiguration von \code{exp.py}. Jede Variation ändert
+           genau einen dieser Werte.}
+  \label{tab:default_config}
+  \small
+  \begin{tabular}{ll@{\hspace{2.5em}}ll}
+    \toprule
+    Parameter & Wert & Parameter & Wert \\
+    \midrule
+    Split               & \code{norm\_subject} & Trainierbare Schichten & nur FC \\
+    Trainings-/Testgröße & \num{1000} / \num{200}\textsuperscript{a} & Ausgabe-Aktivierung & Sigmoid \\
+    Batchgröße          & 32                   & Verlust          & L1 (\code{standard}) \\
+    Lernrate            & $10^{-4}$            & Max.\ Epochen / Patience & 500 / 3 \\
+    Weight Decay        & $10^{-5}$            & Validierungsmenge & 200 Frames\textsuperscript{b} \\
+    Wiederholungen      & 5                    & & \\
+    \bottomrule
+  \end{tabular}\\[1mm]
+  \parbox{0.9\linewidth}{\footnotesize \textsuperscript{a}\,zufällig gezogen,
+  Seed 0. \textsuperscript{b}\,von einer Person, die weder in der Trainings-
+  noch in der Testteilmenge vorkommt.}
+\end{table}
+
+\paragraph{Lesehilfe für die Tabellen.} In jeder Hyperparametertabelle ist
+die gewählte Option mit $\dagger$ markiert. Die Spalte \enquote{$p$ vs.\
+$\dagger$} gibt den $p$-Wert eines zweiseitigen Mann-Whitney-$U$-Tests
+zwischen den fünf Läufen dieser Option und den fünf Läufen der gewählten
+Option an. Ein Rangtest wird verwendet, weil fünf Läufe zu wenige sind, um
+die Normalverteilung zu prüfen, und weil mehrere Optionen einzelne
+Ausreißerläufe enthalten (z.\,B.\ ein ReLU-Lauf mit \SI{46,98}{\percent}).
+Bei $5+5$ Läufen ist der kleinstmögliche $p$-Wert $0,008$; er bedeutet, dass
+\emph{jeder} Lauf der einen Option besser ist als \emph{jeder} Lauf der
+anderen. Ein Mittelwert ist nur dann \textbf{fett} gedruckt, wenn die
+gewählte Option \emph{signifikant besser} ist als jede andere Option
+derselben Tabelle ($p<0,05$ und niedrigerer Mittelwert).
+
+Drei Eigenschaften dieses Protokolls sind zu beachten:
+\begin{enumerate}[nosep]
+  \item \textbf{Gleiche Daten in allen Wiederholungen.} Der Seed legt die
+        Trainings-, Test- und Validierungsteilmengen fest, sodass sich die
+        fünf Wiederholungen nur in Gewichtsinitialisierung, Datenreihenfolge
+        und Dropout unterscheiden. Das KI misst daher die Zufälligkeit des
+        Trainings, nicht die Variation zwischen verschiedenen
+        Datenteilmengen.
+  \item \textbf{Kleine Validierungsmenge.} Die 200 Validierungsframes stammen
+        von einer einzigen Person. Das Early Stopping ist daher verrauscht,
+        die Testmenge wird aber nie für die Modellauswahl verwendet.
+  \item \textbf{Trainingszeit.} Bei Läufen mit \enquote{nur FC} wird der Kopf
+        auf zwischengespeicherten ResNet-Merkmalen trainiert (512 Zahlen pro
+        Bild statt des Bildes). Ein Lauf dauert daher nur etwa eine Sekunde,
+        und die Unterschiede zwischen diesen Zeiten sind nicht relevant. Die
+        Zeiten von FC + Layer~4 und vollem ResNet enthalten den Vorwärts- und
+        Rückwärtsdurchlauf durch den Backbone in jeder Epoche und sind daher
+        viel länger; sie sind mit den Zeiten von \enquote{nur FC} nicht
+        direkt vergleichbar.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\subsection{Normierung der Zielwerte}
+\label{sec:normalization}
+
+Die Roh-Blickziele von GazeCapture sind in Bildschirmpunkten des
+Aufnahmegeräts angegeben, gemessen von der oberen linken Bildschirmecke. Ihr
+Wertebereich hängt daher von der Bildschirmgröße und der Ausrichtung des
+Geräts ab: Die \num{347085} Frames der 262 Personen stammen von zehn
+Bildschirmformaten, von $320\times480$ bis $1024\times768$ Punkten,
+aufgenommen im Hoch- und im Querformat. Die Ziele werden daher mit der
+Bildschirmbreite $W$ und -höhe $H$ des jeweiligen Frames normiert
+(\code{main.py}; Werte außerhalb von $[0,1]$ werden abgeschnitten, was
+\SI{0,006}{\percent} der Frames betrifft):
+\begin{equation}
+  x_{\mathrm{norm}} = \frac{x}{W},\qquad y_{\mathrm{norm}} = \frac{y}{H}.
+\end{equation}
+\Cref{fig:normalization} zeigt die Wirkung. Ohne Normierung konzentrieren
+sich die Ziele der vielen Smartphone-Frames im oberen linken Bereich, und
+dieselbe Koordinate bedeutet auf jedem Gerät eine andere Bildschirmposition
+(\cref{fig:raw_targets}); die Fehlerwerte sind daher zwischen Geräten nicht
+vergleichbar (linke Spalte). Nach der Normierung liegen alle Ziele in
+$[0,1]^2$, und \cref{eq:ediag} ist wohldefiniert (rechte Spalte). Alle
+weiteren Experimente verwenden normierte Ziele.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[t]{0.43\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{raw_targets.png}\\[2mm]
+    \includegraphics[width=\textwidth]{raw_learning_curve.jpg}
+    \caption{Roh-Ziele in Bildschirmpunkten (Dichte aller Frames,
+             logarithmische Farbskala); gestrichelt: Umrisse der
+             Bildschirmformate. Unten: Lernkurve eines frühen Laufs auf
+             Rohkoordinaten; die Werte sind keine Prozente einer gemeinsamen
+             Bildschirmdiagonale und mit den anderen Abbildungen nicht
+             vergleichbar.}
+    \label{fig:raw_targets}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.52\textwidth}
+    \centering
+    \includegraphics[width=0.82\textwidth]{normalized_targets.png}\\[2mm]
+    \includegraphics[width=\textwidth]{norm_test_train_const_rand.png}
+    \caption{Normierte Ziele (gleiche Darstellung; gestrichelt:
+             Einheitsquadrat). Die hellen Zellen sind Kalibrierpunkte, die
+             auf allen Geräten an denselben relativen Positionen gezeigt
+             werden. Unten: Lernkurve auf \code{norm\_random}
+             (\num{1000}/\num{200}) mit der Metrik aus \cref{eq:ediag}.
+             Epoche~0 ist das untrainierte Modell. Die waagerechten Linien
+             sind Baselines des \emph{gesamten} Datensatzes; siehe Text.}
+    \label{fig:normalized_targets}
+  \end{subfigure}
+  \caption{Roh-Blickziele im Vergleich zu normierten Blickzielen.}
+  \label{fig:normalization}
+\end{figure}
+
+\paragraph{Warum beginnt die Kurve bei der Konstant- und nicht bei der Zufalls-Baseline?}
+In \cref{fig:normalized_targets} beginnen die Kurven in Epoche~0, also
+\emph{vor} dem ersten Trainingsschritt, bei \SI{26,77}{\percent}. Man könnte
+erwarten, dass sich das untrainierte Modell wie die Zufalls-Baseline (etwa
+\SI{40}{\percent}) verhält. Diese Erwartung trifft aus folgendem Grund nicht
+zu.
+
+Die Zufalls-Baseline rät für jedes Bild einen \emph{anderen}, gleichverteilten
+Punkt über den ganzen Bildschirm. Ein untrainiertes Netz tut das nicht.
+Seine Gewichte sind mit kleinen Zufallswerten initialisiert, daher erzeugt
+die letzte lineare Schicht für jedes Bild Werte nahe $0$, und die Sigmoid
+bildet sie auf $\sigma(0)=0,5$ ab. Das untrainierte Modell sagt daher für
+alle Bilder fast \emph{denselben} Punkt vorher, die Bildschirmmitte
+$(0{,}5;\,0{,}5)$. Genau das tut die Konstant-Baseline. Die richtige
+Erwartung lautet daher:
+\begin{itemize}[nosep]
+  \item Epoche~0 $\approx$ Konstant-Baseline \emph{derselben} Testdaten
+        (\enquote{immer in die Mitte schauen});
+  \item das Training muss die Kurve \emph{unter} diesen Wert bringen; erst
+        dann hat das Modell etwas aus den Bildern gelernt;
+  \item die Zufalls-Baseline ist eine obere Referenz für \enquote{reines
+        Raten}; ein Modell sollte nie darüber liegen.
+\end{itemize}
+Die gemessenen Werte bestätigen das: Auf den 200 Testbildern dieses Laufs
+beträgt die Konstant-Baseline \SI{26,76}{\percent} (Trainingsmittelwert) bzw.\
+\SI{26,71}{\percent} (Bildschirmmitte), was dem Startwert von
+\SI{26,77}{\percent} entspricht. Die waagerechte Linie in der alten Abbildung
+(\SI{27,25}{\percent}) wurde auf dem \emph{gesamten} Datensatz berechnet und
+liegt daher etwas höher; dadurch schien die Kurve \enquote{unterhalb der
+Baseline} zu beginnen. Der Plot-Code wurde korrigiert: Die Baselines werden
+jetzt auf derselben Trainings-/Testteilmenge wie die Kurven berechnet
+(\code{metrics.subset\_baselines}; \code{Compare\_notebook.ipynb},
+Abschnitt~4, der diese Abbildung auch neu erzeugt).
+
+% ------------------------------------------------------------------------------
+\subsection{Baselines}
+\label{sec:baselines}
+
+Es werden zwei Referenzschätzer verwendet. Die \emph{Konstant-Baseline} sagt
+für jedes Testbild den mittleren Zielwert der Trainingsdaten vorher. Die
+\emph{Zufalls-Baseline} zieht Vorhersagen gleichverteilt aus $[0,1]^2$. Ein
+Modell ist nur dann nützlich, wenn es deutlich besser ist als die
+Konstant-Baseline.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Baseline-Fehler $\Ediag$ in \si{\percent}. Oben: gesamter
+           Datensatz (\code{exp.py}, Bootstrap mit 30 Stichproben zu je
+           2000 Frames, Mittelwert und \SI{98}{\percent}-KI). Unten: dieselben
+           zufälligen Trainings-/Testteilmengen (Seed 0), die für das
+           Modelltraining verwendet werden (kein KI, eine feste Teilmenge).}
+  \label{tab:baselines}
+  \small
+  \begin{tabular}{lcc}
+    \toprule
+    Daten & Konstant-Baseline & Zufalls-Baseline \\
+    \midrule
+    Gesamter Datensatz (\num{347085} Frames) & 27,28 \,[27,15; 27,40] & 39,82 \,[39,60; 40,04] \\
+    \midrule
+    \code{norm\_subject}, \num{1000}/\num{200}   & 28,46 & 40,36 \\
+    \code{norm\_subject}, \num{10000}/\num{2000} & 27,62 & 39,96 \\
+    \code{norm\_random}, \num{1000}/\num{200}    & 27,66 & 39,83 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Die Baselines des früheren Entwurfs (\SI{30,99}{\percent} und
+\SI{42,70}{\percent}) stammten aus einem älteren Notebook-Lauf, der nicht
+Teil der Protokolle ist; sie sind durch die protokollierten Werte in
+\cref{tab:baselines} ersetzt. Der untere Teil der Tabelle ist die richtige
+Referenz für alle Modellergebnisse in \cref{sec:training}.
+
+% ==============================================================================
+\section{Trainingskonfiguration}
+\label{sec:training}
+% ==============================================================================
+
+Alle Ergebnisse dieses Abschnitts stammen aus einem Lauf
+(\code{exp\_results\_all.json}; \code{exp.py}, korrigierte Metrik, zufällige
+Teilmengen mit Seed 0, validierungsbasiertes Early Stopping, fünf
+Wiederholungen pro Konfiguration). Die Konstant-Baseline der
+Standardkonfiguration auf derselben Teilmenge beträgt \SI{28,46}{\percent}.
+
+% ------------------------------------------------------------------------------
+\subsection{Batchgröße}
+\label{sec:batch}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Batchgröße. Mittlerer Testfehler über fünf Läufe mit
+           \SI{98}{\percent}-KI und mittlere Dauer eines vollständigen
+           Trainingslaufs (Kopf auf zwischengespeicherten Merkmalen, siehe
+           \cref{sec:protocol}).}
+  \label{tab:batch_size}
+  \small
+  \begin{tabular}{ccccc}
+    \toprule
+    Batchgröße & Mittl.\ Testfehler (\%) & \SI{98}{\percent}-KI (\%) & $p$ vs.\ $\dagger$ & Laufzeit (min) \\
+    \midrule
+    32\sel{}     & 28,39 & [28,21; 28,58] & ---  & 0,019 \\
+    64           & 28,35 & [28,29; 28,41] & 0,69 & 0,012 \\
+    128          & 28,38 & [28,30; 28,47] & 0,84 & 0,009 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\Cref{tab:batch_size} zeigt, dass die drei Batchgrößen denselben Testfehler
+ergeben: Die Mittelwerte unterscheiden sich um höchstens \num{0,05}
+Prozentpunkte, die Konfidenzintervalle überlappen, und der Rangtest findet
+keinen Unterschied ($p\ge0,69$). Die Trainingszeiten liegen unter einer
+Sekunde pro Lauf, weil nur der kleine Kopf auf zwischengespeicherten Merkmalen
+trainiert wird; die Zeitunterschiede sind daher nicht relevant.
+
+Eine Batchgröße von 32 wird als Standard beibehalten. Das Experiment zeigt
+keinen Nachteil dieses Werts, und für eine kleine Batchgröße im
+Personalisierungssetting sprechen zwei praktische Argumente: (i) Eine
+persönliche Sitzung enthält nur einige hundert Trainingsbilder, sodass eine
+kleine Batchgröße mehr Parameterupdates pro Epoche ergibt, und (ii) dem
+Gradientenrauschen kleiner Batches wird üblicherweise eine leicht
+regularisierende Wirkung zugeschrieben. Die Daten dieses Experiments
+\emph{belegen} jedoch keinen Vorteil von 32 gegenüber 64 oder 128.
+
+% ------------------------------------------------------------------------------
+\subsection{Lernrate}
+\label{sec:lr}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Lernrate. Mittlerer Testfehler über fünf Läufe mit
+           \SI{98}{\percent}-KI und mittlere Dauer eines vollständigen
+           Trainingslaufs.}
+  \label{tab:learning_rate}
+  \small
+  \begin{tabular}{ccccc}
+    \toprule
+    Lernrate & Mittl.\ Testfehler (\%) & \SI{98}{\percent}-KI (\%) & $p$ vs.\ $\dagger$ & Laufzeit (min) \\
+    \midrule
+    $10^{-3}$          & 28,43 & [28,33; 28,54] & 0,15  & 0,018 \\
+    $10^{-4}$\sel{}    & 28,37 & [28,32; 28,42] & ---   & 0,020 \\
+    $10^{-5}$          & 28,33 & [28,28; 28,38] & 0,056 & 0,022 \\
+    $10^{-6}$          & 28,37 & [28,21; 28,52] & 0,42  & 0,055 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.78\textwidth]{Test-Error_diff_learning-rate.png}
+  \caption{Testfehlerkurven einzelner Trainingsläufe mit vier Lernraten
+           (\code{norm\_random}, \num{1000}/\num{200}, 15 Epochen ohne Early
+           Stopping, Metrik aus \cref{eq:ediag}). Der erste Punkt (Epoche~1
+           auf der Achse) ist das untrainierte Modell.}
+  \label{fig:lr_curves}
+\end{figure}
+
+\Cref{tab:learning_rate} zeigt in der Variation mit fünf Läufen keinen
+signifikanten Unterschied zwischen den vier Lernraten: Alle Mittelwerte liegen
+zwischen \SI{28,33}{\percent} und \SI{28,43}{\percent}, die
+Konfidenzintervalle überlappen, und kein Rangtest ist signifikant
+($p\ge0,056$). Der Endfehler allein kann die Wahl daher nicht begründen. Die
+Wahl von $\eta = 10^{-4}$ beruht auf dem \emph{Konvergenzverhalten} in
+\cref{fig:lr_curves}:
+\begin{itemize}[nosep]
+  \item $\bm{\eta = 10^{-3}}$: Die Schritte sind zu groß. Nach einem schnellen
+        ersten Abfall schwankt der Testfehler stark und steigt wieder an
+        (Spitzen von etwa \SI{27,1}{\percent} und \SI{28,4}{\percent}); der Lauf
+        konvergiert nicht zu einem stabilen Minimum.
+  \item $\bm{\eta = 10^{-4}}$: erreicht den niedrigsten Testfehler aller
+        Kurven (etwa \SI{23,6}{\percent} um Epoche~10). Die Kurve schwankt
+        noch, aber viel weniger als bei $10^{-3}$, und das Early Stopping
+        kann den besten Zustand behalten.
+  \item $\bm{\eta = 10^{-5}}$ \textbf{und} $\bm{10^{-6}}$: Die Kurven sind sehr
+        glatt und konvergieren monoton, bleiben aber auf einem Plateau von
+        etwa \SI{24,3}{\percent}. Die Schrittweite ist zu klein, um diesen
+        Bereich innerhalb des Trainingsbudgets zu verlassen; das Ergebnis ist
+        stabil, aber deutlich nicht das beste erreichbare.
+\end{itemize}
+Die Trainingszeit wird hier \emph{nicht} als Kriterium verwendet: Sie liegt
+für alle Lernraten unter einer Sekunde (zwischengespeicherte Merkmale), und
+die Entscheidung hängt nur vom Konvergenzverhalten und vom erreichbaren
+Fehler ab. Zu beachten ist, dass \cref{fig:lr_curves} einzelne Läufe zeigt;
+die Variation mit fünf Läufen in \cref{tab:learning_rate} bestätigt keinen
+signifikanten Unterschied.
+
+% ------------------------------------------------------------------------------
+\subsection{Trainierbare Schichten}
+\label{sec:layers}
+
+Es werden drei Fine-Tuning-Tiefen verglichen (\cref{tab:params}): nur der
+Regressionskopf (nur FC), der Kopf plus die letzte Residualstufe
+(\code{layer4}) und das gesamte Netz.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Trainierbare Parameter der drei Fine-Tuning-Konfigurationen
+           (ResNet-18 mit Regressionskopf, insgesamt \num{11603650}
+           Parameter).}
+  \label{tab:params}
+  \small
+  \begin{tabular}{lrrr}
+    \toprule
+    & Nur FC & FC + Layer 4 & Volles ResNet \\
+    \midrule
+    Trainierbare Parameter         & \num{427138} & \num{8820866} & \num{11603650} \\
+    Anteil an allen Parametern     & \SI{3,68}{\percent} & \SI{76,02}{\percent} & \SI{100,00}{\percent} \\
+    Backbone-Merkmale speicherbar  & ja & nein & nein \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Trainierbare Schichten. Mittlerer Testfehler über fünf Läufe mit
+           \SI{98}{\percent}-KI und mittlere Dauer eines vollständigen
+           Trainingslaufs. Die Zeit für \enquote{nur FC} enthält keinen
+           Vorwärtsdurchlauf durch den Backbone (zwischengespeicherte
+           Merkmale).}
+  \label{tab:layers}
+  \small
+  \begin{tabular}{lcccc}
+    \toprule
+    Trainierbare Schichten & Mittl.\ Testfehler (\%) & \SI{98}{\percent}-KI (\%) & $p$ vs.\ $\dagger$ & Laufzeit (min) \\
+    \midrule
+    Nur FC\sel{}           & 28,36 & [28,23; 28,49] & ---  & 0,015 \\
+    FC + Layer 4           & 29,07 & [26,58; 31,55] & 0,22 & 9,160 \\
+    Volles ResNet          & 29,39 & [26,99; 31,78] & 0,31 & 15,366 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\enquote{Nur FC} hat den niedrigsten mittleren Fehler und mit Abstand das
+schmalste Intervall (\cref{tab:layers}). Das Trainieren weiterer Schichten
+hilft nicht; es macht das Ergebnis \emph{weniger stabil}: Einer der fünf
+Läufe mit FC + Layer~4 (\SI{31,72}{\percent}) und zwei der fünf Läufe mit
+vollständigem Fine-Tuning (\SI{30,70}{\percent} und \SI{31,18}{\percent})
+enden deutlich über der Konstant-Baseline (\SI{28,46}{\percent}), während alle
+Läufe mit \enquote{nur FC} zwischen \SI{28,28}{\percent} und
+\SI{28,47}{\percent} bleiben. Mit nur fünf Läufen sind die Unterschiede nicht
+signifikant ($p=0,22$ und $0,31$), daher ist der Wert für \enquote{nur FC}
+nicht fett gedruckt. Die Trainingszeit wächst stark mit der Zahl der
+trainierbaren Parameter: \SI{9,2}{\minute} pro Lauf für FC + Layer~4 und
+\SI{15,4}{\minute} für das gesamte Netz.
+
+\enquote{Nur FC} wird aus drei Gründen für die Personalisierungsexperimente
+gewählt:
+\begin{enumerate}[nosep]
+  \item \textbf{Kein Genauigkeitsverlust, mehr Stabilität:} In diesem
+        Experiment senkt das Trainieren weiterer Schichten den Fehler nicht,
+        sondern erhöht die Streuung zwischen den Läufen.
+  \item \textbf{Robustheit bei wenigen Daten:} Eine persönliche Sitzung hat
+        nur einige hundert Bilder. Millionen von Backbone-Parametern mit so
+        wenigen Beispielen zu aktualisieren, birgt die Gefahr der
+        Überanpassung und verzerrt die vortrainierten Merkmale;
+        \citet{kumar2022finetuning} zeigen, dass vollständiges Fine-Tuning
+        vortrainierte Repräsentationen beschädigen und schlechter
+        generalisieren kann als das Training nur des Kopfes.
+  \item \textbf{Aufwand:} Nur \SI{3,68}{\percent} der Parameter werden
+        trainiert, und die Backbone-Merkmale können einmal berechnet und
+        wiederverwendet werden. Das macht die Personalisierung schnell und
+        speichersparend.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\subsection{Ausgabe-Aktivierung}
+\label{sec:activation}
+
+Die Ausgabe-Aktivierung wird nach der letzten linearen Schicht angewendet,
+die $(x,y)$ erzeugt. Sigmoid bildet die Ausgabe auf $(0,1)$ ab, was dem
+normierten Koordinatenbereich entspricht. Die Gauß-Aktivierung
+$g(z)=\exp(-z^2/2\sigma^2)$ mit $\sigma=1$ bildet ebenfalls auf $(0,1]$ ab, ist
+aber nicht monoton. ReLU entfernt nur negative Werte, und \enquote{Keine}
+lässt die lineare Ausgabe unverändert.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Ausgabe-Aktivierung. Mittlerer Testfehler über fünf Läufe mit
+           \SI{98}{\percent}-KI und mittlere Dauer eines vollständigen
+           Trainingslaufs.}
+  \label{tab:activation}
+  \small
+  \begin{tabular}{lcccc}
+    \toprule
+    Aktivierung & Mittl.\ Testfehler (\%) & \SI{98}{\percent}-KI (\%) & $p$ vs.\ $\dagger$ & Laufzeit (min) \\
+    \midrule
+    Sigmoid\sel{}    & \textbf{28,36} & [28,29; 28,43] & ---   & 0,022 \\
+    Gauß             & 31,29 & [28,44; 34,14] & 0,008 & 0,019 \\
+    ReLU             & 32,90 & [19,69; 46,10] & 0,008 & 0,028 \\
+    Keine            & 29,39 & [28,42; 30,36] & 0,008 & 0,032 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Sigmoid ist der einzige klare Gewinner der Hyperparameterstudie
+(\cref{tab:activation}): Sie hat den niedrigsten mittleren Fehler und das
+schmalste Intervall, und \emph{jeder} Sigmoid-Lauf ist besser als \emph{jeder}
+Lauf der drei anderen Aktivierungen ($p=0,008$ in allen drei Vergleichen).
+Der Wert ist daher fett gedruckt. Die anderen Aktivierungen sind auch weniger
+stabil: Ein ReLU-Lauf endet bei \SI{46,98}{\percent} und damit schlechter als
+die Zufalls-Baseline. Ein plausibler Grund ist, dass ReLU-Ausgaben für alle
+Eingaben null werden können (\enquote{tote} Ausgaben), wovon sich der Gradient
+nicht erholt. Ohne begrenzende Aktivierung (Keine, ReLU) kann das Netz
+außerdem Punkte außerhalb des Bildschirms vorhersagen. Sigmoid wird gewählt,
+weil sie die Ausgabe auf den gültigen Bildschirmbereich begrenzt und den
+niedrigsten und stabilsten Fehler ergab.
+
+% ------------------------------------------------------------------------------
+\subsection{Datensatzgröße}
+\label{sec:size}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Datensatzgröße (Training/Test). Mittlerer Testfehler über fünf
+           Läufe mit \SI{98}{\percent}-KI, mittlere Dauer eines vollständigen
+           Trainingslaufs und Konstant-Baseline der jeweiligen Testteilmenge.}
+  \label{tab:dataset_size}
+  \small
+  \setlength{\tabcolsep}{3.5pt}
+  \begin{tabular}{lccccc}
+    \toprule
+    Training / Test & Mittl.\ Testfehler (\%) & \SI{98}{\percent}-KI (\%) & $p$ vs.\ $\dagger$ & Laufzeit (min) & Konst.-Baseline (\%) \\
+    \midrule
+    \num{10000} / \num{2000}      & 27,64 & [27,55; 27,73] & 0,008 & 0,167 & 27,62 \\
+    \num{1000} / \num{200}\sel{}  & 28,39 & [28,33; 28,44] & ---   & 0,018 & 28,46 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Die größere Konfiguration hat einen niedrigeren mittleren Fehler
+(\cref{tab:dataset_size}). Die beiden Konfigurationen werden jedoch auf
+\emph{unterschiedlichen} Testmengen ausgewertet, und jeder Mittelwert ist
+praktisch gleich der Konstant-Baseline seiner eigenen Testmenge
+(\SI{27,64}{\percent} vs.\ \SI{27,62}{\percent} und \SI{28,39}{\percent} vs.\
+\SI{28,46}{\percent}). Der Unterschied von \num{0,75} Prozentpunkten wird
+daher durch die unterschiedlichen Testdaten verursacht und nicht durch mehr
+Trainingsdaten, auch wenn der Rangtest signifikant ist ($p=0,008$). Die kleine
+Konfiguration (\num{1000}/\num{200}) wird für die Variationen beibehalten,
+weil sie etwa zehnmal schneller ist und der Datenmenge einer
+Personalisierungssitzung entspricht.
+
+% ------------------------------------------------------------------------------
+\subsection{Split-Typ}
+\label{sec:split}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Split-Typ. Mittlerer Testfehler über fünf Läufe mit
+           \SI{98}{\percent}-KI und Konstant-Baseline der jeweiligen
+           Testteilmenge.}
+  \label{tab:split}
+  \small
+  \begin{tabular}{lcccc}
+    \toprule
+    Split & Mittl.\ Testfehler (\%) & \SI{98}{\percent}-KI (\%) & $p$ vs.\ $\dagger$ & Konstant-Baseline (\%) \\
+    \midrule
+    \code{norm\_random}           & 27,72 & [27,64; 27,80] & 0,008 & 27,66 \\
+    \code{norm\_subject}\sel{}    & 28,39 & [28,26; 28,53] & ---   & 28,46 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Der Zufallssplit ergibt den niedrigeren Fehler (\cref{tab:split}). Auch hier
+stammt der größte Teil des Unterschieds aus den Testteilmengen: Die
+Konstant-Baseline ist auf der \code{norm\_random}-Teilmenge bereits um
+\num{0,80} Prozentpunkte niedriger, und beide Modelle liegen innerhalb von
+\num{0,07} Prozentpunkten ihrer eigenen Baseline. Zusätzlich erlaubt der
+Zufallssplit, dass dieselben Personen in Trainings- und Testdaten vorkommen,
+was die Aufgabe erleichtert und die Schätzung optimistisch macht. Der
+personendisjunkte Split \code{norm\_subject} wird daher als Standard
+verwendet: Er ist der einzige, der die Generalisierung auf unbekannte
+Personen misst, also die Situation vor der Personalisierung.
+
+% ==============================================================================
+\section{Räumliche Fehleranalyse und Verlustfunktionen}
+\label{sec:spatial}
+% ==============================================================================
+
+Der mittlere Fehler aus \cref{sec:training} verbirgt, \emph{wo} auf dem
+Bildschirm die Fehler auftreten. Dieser Abschnitt analysiert zuerst die
+räumliche Fehlerverteilung (\cref{sec:partition,sec:heatmaps}). Das
+beobachtete Muster motivierte positionsgewichtete Verlustfunktionen
+(\cref{sec:losses}), die in \cref{sec:loss_results} ausgewertet werden.
+
+\subsection{Bildschirmeinteilung}
+\label{sec:partition}
+
+Der normierte Bildschirm $[0,1]^2$ wird durch ein $3\times3$-Referenzraster
+mit drei Regionen beschrieben:
+\begin{align*}
+  \text{Mitte:}  &\quad (0,50;\,0,50),\\
+  \text{Ränder:} &\quad (0,10;\,0,50),\ (0,50;\,0,10),\ (0,90;\,0,50),\ (0,50;\,0,90),\\
+  \text{Ecken:}  &\quad (0,10;\,0,10),\ (0,10;\,0,90),\ (0,90;\,0,10),\ (0,90;\,0,90).
+\end{align*}
+Ein Testbeispiel mit Ziel $\bm p$ gehört zum Rasterpunkt $\bm g$, wenn
+$\lVert\bm p-\bm g\rVert_2 \le r$ mit $r = 0,15$ gilt. Der Fehler eines
+Rasterpunkts ist der mittlere euklidische Fehler $\lVert\hat{\bm p}-\bm
+p\rVert_2$ seiner Beispiele (in normierten Einheiten, d.\,h.\ als Anteil der
+Bildschirmseite; die Diagonale ist $\sqrt2 \approx 1,41$). Der Fehler einer
+Region ist der Mittelwert über alle Beispiele ihrer Rasterpunkte. Diese
+Definitionen werden in allen Abbildungen und Tabellen dieses Abschnitts
+verwendet.
+
+\subsection{Fehler-Heatmaps}
+\label{sec:heatmaps}
+
+\Cref{fig:heatmaps} verwendet die 200 Testvorhersagen des Standardmodells
+(\code{norm\_subject}, L1-Verlust; Datei
+\code{results/heatmap/base\_loss1.csv}). Für eine Cursorposition $\bm c$
+(Mitte, Rand oder Ecke) wird der mittlere Fehler $\bar e(\bm c)$ aller
+Beispiele innerhalb des Radius $r$ berechnet und als isotrope Gaußfunktion
+dargestellt:
+\begin{equation}
+  H(x,y) = \bar e(\bm c)\,
+  \exp\!\left(-\frac{\lVert (x,y)-\bm c\rVert_2^2}{2\sigma^2}\right),
+  \qquad \sigma = 0,20 .
+\end{equation}
+Die Farbe kodiert daher die \emph{Größe} des lokalen mittleren Fehlers, und
+die Lage des hellen Flecks zeigt, \emph{wo} er gemessen wurde. Alle drei
+Teilbilder verwenden dieselbe Farbskala (0 bis zum größten Wert), sodass die
+Farben direkt vergleichbar sind.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig4_spatial_heatmaps.png}
+  \caption{Räumlicher Fehler des Standardmodells (L1-Verlust,
+           \code{norm\_subject}, 200 Testbeispiele). Teilbilder 1--3:
+           Gaußsche Fehler-Heatmaps ($r=0,15$, $\sigma=0,20$, gemeinsame
+           Farbskala) in der Mitte $(0,5;\,0,5)$, am linken Rand
+           $(0,1;\,0,5)$ und in der unteren linken Ecke $(0,1;\,0,1)$. Der
+           Fehler wächst von der Mitte (0,086) über den Rand (0,425) zur Ecke
+           (0,559). Teilbild 4: Ziele (blau) und Vorhersagen (rot); alle
+           Vorhersagen liegen nahe der Bildschirmmitte.}
+  \label{fig:heatmaps}
+\end{figure}
+
+Der Fehler nimmt von innen nach außen monoton zu: Der mittlere Fehler beträgt
+$0,086$ in der Mittelregion ($n=18$), $0,432$ an den Rändern ($n=62$) und
+$0,586$ in den Ecken ($n=42$). Die Randfehler sind etwa fünfmal und die
+Eckfehler etwa siebenmal so groß wie die Fehler in der Mitte.
+
+Das vierte Teilbild erklärt dieses Muster. Alle Vorhersagen liegen in einem
+sehr kleinen Bereich um $(0,5;\,0,5)$: Ihre Standardabweichung beträgt in
+beiden Koordinaten etwa $0,004$, während die Ziele eine Standardabweichung
+von etwa $0,28$ haben. Das Modell sagt daher für jedes Bild fast denselben
+Punkt vorher, und sein Fehler ist einfach der Abstand des Ziels zur
+Bildschirmmitte. Ein konstanter Mittelpunkt-Schätzer ergibt praktisch dieselben
+Werte (Mitte $0,085$, Ränder $0,432$, Ecken $0,587$; insgesamt
+$\Ediag=\SI{28,45}{\percent}$ gegenüber \SI{28,47}{\percent} für das Modell).
+
+\subsection{Verlustfunktionen}
+\label{sec:losses}
+
+Die hohen Rand- und Eckfehler führten zu der Idee, diesen Regionen im Verlust
+mehr Gewicht zu geben. Sei $\hat{\bm p}_i=(\hat x_i,\hat y_i)$ die Vorhersage
+und $\bm p_i=(x_i,y_i)$ das Ziel des Beispiels $i$ in einem Batch der Größe
+$N$.
+
+\paragraph{L1-Verlust (\code{nn.L1Loss}, \enquote{standard}).}
+\begin{equation}
+  \mathcal{L}_{1} = \frac{1}{2N}\sum_{i=1}^{N}\bigl(|\hat x_i-x_i| + |\hat y_i-y_i|\bigr).
+\end{equation}
+Der Gradient hat einen konstanten Betrag, unabhängig von der Fehlergröße. Der
+Verlust ist daher robust gegenüber Ausreißern (zum Beispiel falschen Labels
+während Zielübergängen), behandelt aber alle Bildschirmpositionen gleich.
+
+\paragraph{Smooth-L1-Verlust (\code{nn.SmoothL1Loss}, $\beta=1$).}
+Für ein Residuum $u$ gilt:
+\begin{equation}
+  \ell_\beta(u) =
+  \begin{cases}
+    \dfrac{u^2}{2\beta}, & |u| < \beta,\\[1.2ex]
+    |u| - \dfrac{\beta}{2}, & \text{sonst.}
+  \end{cases}
+\end{equation}
+Er ist quadratisch für kleine und linear für große Residuen. Da alle Residuen
+in $[0,1]^2$ kleiner als $\beta=1$ sind, verhält er sich hier wie ein
+skalierter quadratischer Fehler: Der Gradient wird klein, wenn der Fehler
+klein ist.
+
+\paragraph{Sensitiver L1-Verlust (positionsgewichtet, \code{sensitive}).}
+Jedes Beispiel wird mit seinem $L_1$-Abstand zur Bildschirmmitte gewichtet:
+\begin{equation}
+  d_i = |x_i-0,5| + |y_i-0,5| \in [0,1],\qquad
+  w_i = 1 + d_i \in [1,2],
+\end{equation}
+\begin{equation}
+  \mathcal{L}_{\mathrm{sens}} = \frac{1}{N}\sum_{i=1}^{N}
+  w_i\cdot\frac{|\hat x_i-x_i| + |\hat y_i-y_i|}{2}.
+\end{equation}
+Ein Eckbeispiel hat das doppelte Gewicht eines Beispiels in der Mitte, ein
+Randbeispiel etwa das $1,4$-fache. Das vergrößert den Gradienten für äußere
+Ziele und soll die Vorhersagen von der Mitte wegziehen. (Der frühere Entwurf
+definierte das Gewicht als $w=1/d$; das entspricht nicht der Implementierung
+in \code{model.py} und wäre in der Mitte unendlich.)
+
+Der \enquote{verbesserte sensitive Verlust} in \cref{tab:loss_aux} war eine
+weitere Variante aus einem explorativen Notebook. Seine genaue Formel ist im
+aktuellen Code nicht enthalten; er wird daher nur der Vollständigkeit halber
+angegeben.
+
+\subsection{Ergebnisse des Verlustvergleichs}
+\label{sec:loss_results}
+
+\Cref{tab:loss} verbindet den globalen Vergleich aus der Variation mit fünf
+Läufen mit den räumlichen Fehlern der in \cref{sec:partition} definierten
+Regionen. Sie ersetzt die beiden getrennten Tabellen des früheren Entwurfs
+(globale Verlusttabelle und $3\times3$-Rastertabelle).
+
+\begin{table}[htbp]
+  \centering
+  \caption{Vergleich von L1- und sensitivem L1-Verlust. Links: mittlerer
+           Testfehler $\Ediag$ über fünf Läufe (\code{exp.py},
+           \SI{98}{\percent}-KI) und mittlere Laufzeit. Rechts: mittlerer
+           euklidischer Fehler pro Bildschirmregion (normierte Einheiten; je
+           ein früherer Lauf, 200 Testbeispiele, $r=0,15$; $n$ = Anzahl der
+           Beispiele). Letzte Zeile: konstanter Mittelpunkt-Schätzer auf
+           denselben 200 Testbeispielen.}
+  \label{tab:loss}
+  \small
+  \setlength{\tabcolsep}{4.5pt}
+  \begin{tabular}{lccc@{\hspace{1.2em}}ccc}
+    \toprule
+    & \multicolumn{3}{c}{Global (5 Läufe)} & \multicolumn{3}{c}{Räumlicher Fehler (1 Lauf)} \\
+    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
+    Verlust & $\Ediag$ (\%) & \SI{98}{\percent}-KI (\%) & Laufzeit (min)
+            & Mitte & Ränder & Ecken \\
+            &               &                           &
+            & ($n=18$) & ($n=62$) & ($n=42$) \\
+    \midrule
+    L1 (standard)\sel{}    & \textbf{28,32} & [28,23; 28,42] & 0,011 & 0,086 & 0,432 & 0,586 \\
+    Sensitiver L1          & 28,48 & [28,19; 28,78] & 0,021 & 0,090 & 0,431 & 0,585 \\
+    \midrule
+    Konstante Mitte        & 28,45\textsuperscript{a} & --- & --- & 0,085 & 0,432 & 0,587 \\
+    \bottomrule
+  \end{tabular}\\[1mm]
+  \parbox{0.95\linewidth}{\footnotesize \textsuperscript{a}\,Ausgewertet auf
+  denselben 200 Testbeispielen wie die räumliche Analyse.}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Hilfsexperiment: räumlicher Fehler von vier Verlustfunktionen nach
+           15 Epochen auf einer Trainingsmenge mit 52 Eckbeispielen (zwei
+           Läufe, A und B, Werte wie protokolliert). Diese Zahlen stammen aus
+           einem explorativen Notebook; die Berechnung der Regionswerte dieses
+           Laufs ist im aktuellen Code nicht enthalten, daher sind sie mit
+           \cref{tab:loss} nicht direkt vergleichbar.}
+  \label{tab:loss_aux}
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{l cc cc cc cc}
+    \toprule
+    & \multicolumn{2}{c}{Gesamt (\%)} & \multicolumn{2}{c}{Mitte (\%)}
+    & \multicolumn{2}{c}{Ränder (\%)} & \multicolumn{2}{c}{Ecken (\%)} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+    Verlust & A & B & A & B & A & B & A & B \\
+    \midrule
+    L1 (\code{nn.L1Loss})             & 24,54 & 24,63 & 17,01 & 16,74 & 28,28 & 28,98 & 34,93 & 35,07 \\
+    Smooth L1 (\code{nn.SmoothL1Loss})& 23,94 & 24,91 & 15,40 & 16,41 & 29,78 & 30,59 & 34,13 & 35,17 \\
+    Sensitiver L1                     & 25,57 & 25,55 & 19,11 & 18,61 & 29,87 & 29,93 & 33,41 & 34,20 \\
+    Verbesserter sensitiver L1        & 25,53 & 27,75 & 19,20 & 21,86 & 29,17 & 35,03 & 33,77 & 31,58 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Beobachtungen.}
+\begin{itemize}[nosep]
+  \item Global ist L1 leicht, aber signifikant besser als der sensitive
+        Verlust: \SI{28,32}{\percent} gegenüber \SI{28,48}{\percent}
+        (Mann-Whitney $p=0,032$, \cref{tab:loss}); der L1-Wert ist daher fett
+        gedruckt. Der sensitive Verlust streut außerdem stärker zwischen den
+        Läufen. Beide Werte liegen nahe an der Konstant-Baseline
+        (\SI{28,46}{\percent}).
+  \item Räumlich verändert die Positionsgewichtung die Regionsfehler um
+        weniger als $0,005$ normierte Einheiten. Die Rand- und Eckfehler
+        bleiben etwa fünf- bis siebenmal so hoch wie der Fehler in der Mitte.
+  \item Beide Modelle haben dasselbe räumliche Profil wie ein konstanter
+        Mittelpunkt-Schätzer. Die Gewichtung vergrößert den Gradienten für
+        äußere Beispiele, das reicht aber nicht, damit das Modell die
+        Mittelpunktlösung verlässt.
+  \item Im Hilfsexperiment (\cref{tab:loss_aux}) senken die sensitiven
+        Varianten den Eckfehler leicht (sensitiver L1 um
+        \num{0,9}--\num{1,5}, die verbesserte Variante um
+        \num{1,2}--\num{3,5} Prozentpunkte), erhöhen aber den Fehler in der
+        Mitte um \num{1,9}--\num{5,1} Prozentpunkte und den Gesamtfehler in
+        allen Läufen. Die beiden Läufe unterscheiden sich deutlich, daher sind
+        diese Tendenzen nicht verlässlich.
+\end{itemize}
+
+\paragraph{Fazit.}
+Die räumliche Analyse hat gezeigt, \emph{was} das Problem ist: Die Fehler
+konzentrieren sich an den Rändern und in den Ecken. Der positionsgewichtete
+Verlust war der Versuch, diese Fehler zu verringern. Er hat die Ecken nicht
+verbessert und war global sogar leicht, aber signifikant schlechter als L1
+($p=0,032$); im Hilfsexperiment erhöhte er den Fehler in der Mitte. Der
+Standard-L1-Verlust wird daher beibehalten. Er ergab den niedrigeren Fehler,
+ist einfacher, hat keinen zusätzlichen Hyperparameter, und sein konstanter
+Gradientenbetrag macht ihn robust gegenüber Label-Rauschen in den
+persönlichen Aufnahmen. Die Analyse zeigt auch, \emph{warum} die Gewichtung
+nicht helfen konnte: Die großen äußeren Fehler entstehen nicht durch eine
+falsche Gewichtung der Bildschirmregionen, sondern dadurch, dass das Modell
+die Bildschirmmitte kaum verlässt (\cref{sec:discussion}).
+
+% ==============================================================================
+\section{Personalisierungssitzungen}
+\label{sec:sessions}
+% ==============================================================================
+
+\subsection{Aufbau}
+\label{sec:sessions_setup}
+
+In jeder persönlichen Sitzung wird der Kopf eines GazeCapture-Basismodells
+auf den Frames einer Aufnahme neu trainiert (nur FC, Sigmoid, L1,
+$\eta=10^{-4}$, Weight Decay $10^{-5}$, Batchgröße 32, AdamW). Sofern nicht
+anders angegeben, wird jede Sitzung zufällig in \SI{70}{\percent} Trainings-,
+\SI{15}{\percent} Validierungs- und \SI{15}{\percent} Testframes aufgeteilt
+(Seed 42). Das Early Stopping (Patience 3) verwendet den Validierungsfehler,
+und angegeben wird der Testfehler in der Epoche mit dem niedrigsten
+Validierungsfehler. Ist die beste Epoche~0, hat die Personalisierung den
+Validierungsfehler nicht verbessert, und der angegebene Testfehler ist der des
+unveränderten Basismodells.
+
+Alle Ergebnisse dieses und der folgenden Abschnitte wurden mit dem Skript
+\code{personal\_exp.py} (Notebook \code{personal\_compare.ipynb}) und der
+korrigierten Metrik (\cref{eq:ediag}) erzeugt. Alle Zufalls-Seeds sind fest,
+und der Backbone bleibt einschließlich seiner BatchNorm-Statistiken
+vollständig eingefroren.
+
+\paragraph{Merkmals-Cache.} Da der Backbone eingefroren ist, bildet er ein
+Bild in jeder Epoche auf dieselben 512 Merkmale ab. Diese Merkmale werden
+einmal pro Sitzung und Basismodell berechnet (Evaluationstransformation, ohne
+Augmentierung) und gespeichert; danach wird nur noch der Regressionskopf
+trainiert. Das verändert das trainierte Modell nicht, sorgt aber dafür, dass
+ein Lauf auf einer CPU nur Sekunden dauert. Der einzige Unterschied zu den
+früheren Notebook-Läufen ist, dass während der Personalisierung keine
+Bildaugmentierung angewendet wird.
+
+\paragraph{Basismodelle (E0).} Die beiden Basismodelle werden mit der in
+\cref{sec:training} gewählten Konfiguration (nur FC, Sigmoid, L1,
+$\eta=10^{-4}$, Batchgröße 32, \num{1000}/\num{200} zufällige Frames, Seed~0,
+validierungsbasiertes Early Stopping) auf \code{norm\_subject} und
+\code{norm\_random} trainiert. Von fünf Seeds wird der Lauf mit dem
+niedrigsten \emph{Validierungs}fehler behalten (\code{train\_base.py},
+\code{models/base/base\_<split>.pt} mit einer JSON-Datei, die die
+Konfiguration und alle Seeds dokumentiert). Für \code{norm\_subject} wurde
+Seed~0 gewählt (Validierung \SI{27,37}{\percent}, Test \SI{28,70}{\percent};
+Konstant-Baseline derselben Testdaten \SI{28,46}{\percent}), für
+\code{norm\_random} Seed~3 (Validierung \SI{26,74}{\percent}, Test
+\SI{27,81}{\percent}; Konstant-Baseline \SI{27,66}{\percent}). Die fünf Seeds
+unterscheiden sich um weniger als \num{0,4} Prozentpunkte, die Wahl des Seeds
+ist also unkritisch. Wie in \cref{sec:discussion} liegen beide Basismodelle
+auf dem Niveau der Konstant-Baseline.
+
+Von den 27 aufgenommenen Sitzungen werden 18 verwendet: Gen~1 (01--04), Gen~2
+(05--09) und Gen~4 (19--27). Gen~3 (10--18) wurde verworfen, weil sie keinen
+Lerneffekt zeigte. \Cref{tab:session_conditions} listet die
+Aufnahmebedingungen auf.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Aufnahmebedingungen der 18 Sitzungen. Gen~1: kontinuierliche
+           Zielbewegung ohne Sprünge; Gen~2: Ziel mit zufälligen Sprüngen;
+           Gen~4: 5-s-Segmente (\SI{0,5}{\second} WAIT an einem neuen
+           Startpunkt, \SI{4,5}{\second} MOVE), \SI{90}{\percent} der
+           Startpunkte in den Bildschirmecken. Dauer und Betriebssystem wurden
+           nur in Gen~4 variiert (Gen~1/2: Ubuntu, Dauer nicht protokolliert).}
+  \label{tab:session_conditions}
+  \small
+  \begin{tabular}{llll}
+    \toprule
+    Sitzungen & Generation & Brille & Licht / Hintergrund \\
+    \midrule
+    01, 03, 04 & Gen 1 & mit    & 01, 04: hell; 03: dunkel \\
+    02         & Gen 1 & ohne   & hell \\
+    05, 07, 08 & Gen 2 & mit    & 05: hell; 07: dunkel; 08: sehr dunkel \\
+    06, 09     & Gen 2 & ohne   & 06: hell; 09: sehr dunkel \\
+    \midrule
+    \multicolumn{4}{l}{Gen 4 \quad (Dauer / BS)} \\
+    19, 20 & Gen 4 & mit    & ruhig; 120\,s / 90\,s; Ubuntu \\
+    21, 22 & Gen 4 & ohne   & ruhig; 120\,s / 90\,s; Ubuntu \\
+    23 / 24 & Gen 4 & mit / ohne & unruhig; 120\,s; Ubuntu \\
+    25 / 26 & Gen 4 & mit / ohne & unruhig; 120\,s; Windows \\
+    27     & Gen 4 & mit    & unruhig; 90\,s; Windows \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Ergebnisse aller Sitzungen (E1)}
+\label{sec:sessions_results}
+
+\Cref{tab:sessions} zeigt jede Sitzung mit beiden Basismodellen.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Personalisierung der 18 Sitzungen mit zwei Basismodellen
+           (ursprüngliche Labels, zufälliger 70/15/15-Split, Seed 42). Basis:
+           Testfehler des unveränderten Basismodells (Epoche~0); Val.:
+           bester Validierungsfehler; Test: Testfehler in der besten
+           Validierungsepoche; Ep.: beste Epoche; $t$: Dauer eines Laufs in
+           Sekunden (\cref{sec:session_time}); Konst.: Konstant-Baseline
+           (Mittelwert der Trainingsziele, ausgewertet auf denselben
+           Testframes). Fehler in \si{\percent} (\cref{eq:ediag}).
+           Gruppenzeilen: Mittelwert und \SI{98}{\percent}-KI über die
+           Sitzungen der Gruppe.}
+  \label{tab:sessions}
+  \footnotesize
+  \setlength{\tabcolsep}{2.6pt}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{cc ccccc ccccc c}
+    \toprule
+    & & \multicolumn{5}{c}{Basismodell \code{norm\_subject}}
+      & \multicolumn{5}{c}{Basismodell \code{norm\_random}} & \\
+    \cmidrule(lr){3-7}\cmidrule(lr){8-12}
+    Sitzung & Gen. & Basis & Val. & Test & Ep. & $t$ (s) & Basis & Val. & Test & Ep. & $t$ (s) & Konst. \\
+    \midrule
+    01 & 1 & 29,19 & 14,82 & 15,83 & 22 & 2,3 & 29,49 & 11,70 & 12,97 & 47 & 4,2 & 29,45 \\
+    02 & 1 & 28,48 & 10,08 & 10,48 & 30 & 2,2 & 28,42 & 10,04 & 10,43 & 44 & 3,2 & 28,49 \\
+    03 & 1 & 29,61 & 15,26 & 17,20 & 33 & 2,5 & 30,13 & 15,41 & 17,35 & 36 & 2,6 & 29,76 \\
+    04 & 1 & 29,98 & 16,88 & 17,64 & 17 & 2,1 & 29,38 & 15,23 & 16,16 & 31 & 2,7 & 29,17 \\
+    05 & 2 & 32,92 & 25,43 & 17,64 & 26 & 1,1 & 32,49 & 31,93 & 32,77 & 2 & 0,2 & 32,72 \\
+    06 & 2 & 29,29 & 11,31 & 16,67 & 54 & 1,8 & 28,89 & 12,09 & 16,55 & 55 & 2,0 & 27,02 \\
+    07 & 2 & 32,18 & 24,84 & 30,99 & 16 & 0,7 & 32,43 & 25,02 & 31,62 & 18 & 0,6 & 32,28 \\
+    08 & 2 & 25,82 & 23,65 & 23,30 & 24 & 0,8 & 26,32 & 23,38 & 22,31 & 23 & 0,6 & 27,00 \\
+    09 & 2 & 26,83 & 23,55 & 28,64 & 4 & 0,2 & 26,21 & 15,19 & 16,87 & 47 & 1,9 & 28,17 \\
+    19 & 4 & 30,42 & 13,38 & 17,76 & 33 & 2,8 & 30,04 & 12,13 & 16,85 & 47 & 4,4 & 30,19 \\
+    20 & 4 & 33,14 & 16,06 & 14,64 & 23 & 1,9 & 33,01 & 14,58 & 12,93 & 35 & 2,7 & 33,49 \\
+    21 & 4 & 30,18 & 15,03 & 12,51 & 39 & 4,6 & 30,46 & 15,80 & 13,20 & 23 & 2,6 & 29,97 \\
+    22 & 4 & 31,17 & 13,54 & 13,02 & 22 & 2,2 & 30,87 & 12,53 & 12,32 & 37 & 3,1 & 30,32 \\
+    23 & 4 & 33,15 & 23,48 & 23,65 & 10 & 1,4 & 32,59 & 24,02 & 24,05 & 10 & 2,0 & 32,57 \\
+    24 & 4 & 33,09 & 28,77 & 26,97 & 7 & 0,9 & 32,84 & 29,53 & 27,42 & 6 & 1,0 & 33,01 \\
+    25 & 4 & 32,19 & 26,98 & 24,61 & 19 & 2,4 & 33,00 & 26,74 & 24,13 & 26 & 2,8 & 31,54 \\
+    26 & 4 & 30,60 & 21,93 & 18,61 & 20 & 2,3 & 30,39 & 21,40 & 17,97 & 37 & 4,5 & 29,48 \\
+    27 & 4 & 31,98 & 26,05 & 26,06 & 19 & 1,5 & 32,29 & 26,27 & 26,68 & 19 & 1,7 & 31,19 \\
+    \midrule
+    \multicolumn{2}{l}{Gen 1 (4)} & 29,32 & 14,26 & 15,29 & 25,5 & 2,3 & 29,35 & 13,10 & 14,23 & 39,5 & 3,2 & 29,22 \\
+      & & [27,86; 30,77] & [7,62; 20,89] & [7,80; 22,77] & & [1,8; 2,7] & [27,75; 30,96] & [7,07; 19,12] & [7,10; 21,35] & & [1,5; 4,8] & [27,99; 30,45] \\
+    \multicolumn{2}{l}{Gen 2 (5)} & 29,41 & 21,76 & 23,45 & 24,8 & 0,9 & 29,27 & 21,52 & 24,02 & 29,0 & 1,0 & 29,44 \\
+      & & [24,14; 34,68] & [11,88; 31,63] & [12,74; 34,16] & & [0,0; 1,9]\textsuperscript{a} & [24,06; 34,47] & [8,20; 34,85] & [10,93; 37,12] & & [0,0; 2,5]\textsuperscript{a} & [24,68; 34,20] \\
+    \multicolumn{2}{l}{Gen 4 (9)} & 31,77 & 20,58 & 19,76 & 21,3 & 2,2 & 31,72 & 20,33 & 19,51 & 26,7 & 2,8 & 31,31 \\
+      & & [30,60; 32,94] & [14,66; 26,50] & [14,26; 25,26] & & [1,2; 3,3] & [30,51; 32,93] & [13,88; 26,79] & [13,59; 25,42] & & [1,7; 3,9] & [29,91; 32,70] \\
+    \midrule
+    \multicolumn{2}{l}{\textbf{Alle (18)}} & \textbf{30,57} & \textbf{19,50} & \textbf{19,79} & \textbf{23,2} & \textbf{1,9} & \textbf{30,51} & \textbf{19,05} & \textbf{19,59} & \textbf{30,2} & \textbf{2,4} & \textbf{30,32} \\
+      & & [29,27; 31,87] & [15,87; 23,13] & [16,18; 23,40] & & [1,3; 2,5] & [29,21; 31,82] & [14,86; 23,25] & [15,47; 23,71] & & [1,6; 3,2] & [29,12; 31,53] \\
+    \bottomrule
+  \end{tabular}}\\[1mm]
+  \parbox{0.95\linewidth}{\footnotesize \textsuperscript{a}\,Untere Grenze
+  des $t$-Intervalls unter null (wenige Sitzungen, große Streuung), bei 0
+  abgeschnitten.}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig_sessions_baseline.png}
+  \caption{Testfehler der 18 Sitzungen nach der Personalisierung mit den
+           beiden Basismodellen im Vergleich mit der Konstant-Baseline und mit
+           dem unveränderten Basismodell (\code{norm\_subject}) auf denselben
+           Testframes (Daten aus \cref{tab:sessions}).}
+  \label{fig:sessions}
+\end{figure}
+
+\paragraph{Die Personalisierung wirkt.}
+Über alle 18 Sitzungen sinkt der Testfehler von \SI{30,32}{\percent}
+(Konstant-Baseline) auf \SI{19,79}{\percent} mit dem Basismodell
+\code{norm\_subject} und auf \SI{19,59}{\percent} mit dem Basismodell
+\code{norm\_random}, eine Verringerung um \SI{35}{\percent} bzw.\
+\SI{36}{\percent} (Wilcoxon-Vorzeichen-Rang-Test $p=1,5\cdot10^{-5}$ für
+beide; gepaarter $t$-Test $p<10^{-6}$). Die unveränderten Basismodelle sind
+nicht besser als die Konstant-Baseline (\SI{30,57}{\percent} und
+\SI{30,51}{\percent}; Wilcoxon $p=0,25$ und $p=0,35$), der gesamte Gewinn
+stammt also aus den wenigen Minuten persönlicher Daten. Die beste Sitzung,
+S02 (Gen~1, heller Raum, ohne Brille), erreicht \SI{10,5}{\percent}. Die
+neuen Läufe bestätigen die früheren Notebook-Läufe (Mittelwert
+\SI{19,85}{\percent} über dieselben Sitzungen mit dem Basismodell
+\code{norm\_subject}).
+
+\paragraph{Gruppen.} Die Verringerung gegenüber der Konstant-Baseline beträgt
+\SI{48}{\percent} / \SI{51}{\percent} in Gen~1, \SI{20}{\percent} /
+\SI{18}{\percent} in Gen~2 und \SI{37}{\percent} / \SI{38}{\percent} in Gen~4
+(\code{norm\_subject} / \code{norm\_random}). In Gen~4 ist die Verbesserung
+signifikant (Wilcoxon $p=0,004$); für Gen~1 ($n=4$) und Gen~2 ($n=5$) beträgt
+der kleinstmögliche $p$-Wert des Tests $0,125$ bzw.\ $0,0625$, sodass diese
+Gruppen für ein signifikantes Ergebnis zu klein sind, obwohl der Effekt in
+Gen~1 groß ist. Die Unterschiede zwischen den Generationen sind nicht
+signifikant (Kruskal-Wallis $p=0,13$ und $p=0,12$) und dürfen nicht allein
+als Wirkung des Aufnahmeprotokolls gelesen werden
+(\cref{sec:session_design}).
+
+\paragraph{Wenn die Personalisierung scheitert.}
+In zwei Läufen ist das personalisierte Modell nicht besser als die
+Konstant-Baseline: S09 mit \code{norm\_subject} (beste Epoche~4,
+\SI{28,64}{\percent} gegenüber \SI{28,17}{\percent}) und S05 mit
+\code{norm\_random} (beste Epoche~2, \SI{32,77}{\percent} gegenüber
+\SI{32,72}{\percent}). In beiden Fällen hörte der Validierungsfehler sehr früh
+auf, sich zu verbessern. Mit dem jeweils anderen Basismodell erreichen
+dieselben Sitzungen \SI{16,87}{\percent} (S09) und \SI{17,64}{\percent} (S05).
+Das Scheitern ist daher keine Eigenschaft der Sitzung, sondern eines
+einzelnen Laufs: Mit nur 20--30 Validierungsframes (Gen~2) kann das Early
+Stopping das Training nach wenigen Epochen beenden. S07 (dunkler Raum)
+verbessert sich mit beiden Basismodellen nur wenig (\SI{31,0}{\percent} /
+\SI{31,6}{\percent} gegenüber \SI{32,3}{\percent}); gute Beleuchtung bleibt
+eine Voraussetzung für die Webcam-Personalisierung.
+
+\paragraph{Basismodell.}
+Beide Basismodelle ergeben dasselbe Ergebnis (\SI{19,79}{\percent} gegenüber
+\SI{19,59}{\percent}; Wilcoxon $p=0,20$). Das passt zum Hauptergebnis, dass
+das Basismodell vor allem eine Initialisierung liefert und die persönlichen
+Daten das Ergebnis bestimmen. Für die folgenden Experimente wird das
+Basismodell \code{norm\_subject} verwendet, weil es ohne Informationen über
+die Testpersonen trainiert wurde.
+
+\paragraph{Validierungs- und Testfehler.} Im Mittel liegt der
+Validierungsfehler (\SI{19,50}{\percent}) nahe am Testfehler
+(\SI{19,79}{\percent}). Die größten Abweichungen (5--8 Prozentpunkte,
+S05--S07, S09) treten in den kurzen Gen-2-Aufnahmen auf, in denen die
+Validierungs- und Testmengen jeweils nur etwa 25 Frames enthalten.
+
+\subsection{Trainingszeit einer Sitzung}
+\label{sec:session_time}
+
+Die Zeit $t$ in \cref{tab:sessions} ist die tatsächlich verstrichene Dauer
+\emph{eines vollständigen Personalisierungslaufs} einer Sitzung auf den
+zwischengespeicherten Merkmalen: die Auswertung des unveränderten Modells
+(Epoche~0), alle Trainingsepochen bis zum Early Stopping und die Auswertung
+der Trainings-, Validierungs- und Testdaten nach jeder Epoche. Sie ist weder
+eine Zeit pro Epoche noch ein Mittelwert über mehrere Läufe. Sie enthält
+nicht die einmalige Extraktion der Backbone-Merkmale der Sitzung, die alle
+Läufe derselben Sitzung und desselben Basismodells gemeinsam nutzen. Ein Lauf
+dauert auf einer CPU im Mittel \SI{1,9}{\second} (\code{norm\_subject}) bzw.\
+\SI{2,4}{\second} (\code{norm\_random}); die Dauer wächst mit der Zahl der
+Frames und der Zahl der Epochen (kurze Gen-2-Aufnahmen: \SI{0,9}{\second}).
+Die früheren Notebook-Läufe, die jedes Bild in jeder Epoche durch den
+Backbone schickten, benötigten 1--26 Minuten pro Sitzung. Die
+\enquote{Laufzeit} der Hyperparametertabellen (\cref{sec:protocol}) ist
+dagegen der Mittelwert über fünf wiederholte Läufe einer
+GazeCapture-Konfiguration.
+
+\subsection{Label-Bereinigung (Gen 4, E1b)}
+\label{sec:cleaning}
+
+In Gen~4 beginnt jedes Segment mit einer WAIT-Phase von \SI{0,5}{\second}, in
+der das Ziel an einer neuen Position erscheint und der Nutzer es erst finden
+muss. Diese Frames (\SI{10,0}{}--\SI{10,5}{\percent} der Labels) können ein
+falsches Blicklabel haben. Sie sind exakt protokolliert, daher lassen sich
+bereinigte Labeldateien ohne die WAIT-Frames schreiben
+(\code{session\_design.py --write-clean}).
+
+Ein einfacher Vergleich ist nicht fair: Das bereinigte Modell wird ohne
+WAIT-Frames getestet, das ursprüngliche Modell dagegen auf allen Frames,
+einschließlich der schwer vorherzusagenden WAIT-Frames. Deshalb wird das
+ursprüngliche Modell zusätzlich nur auf den MOVE-Frames seines Testsplits
+ausgewertet (dasselbe Modell, WAIT-Frames aus der Testmenge entfernt;
+\cref{tab:cleaning}).
+
+\begin{table}[htbp]
+  \centering
+  \caption{Label-Bereinigung in Gen~4 (Basismodell \code{norm\_subject},
+           zufälliger Split, Seed 42). Ursprünglich: auf allen Labels
+           trainiert; Testfehler auf allen Testframes, nur auf den MOVE-Frames
+           und nur auf den WAIT-Frames ($n_W$ = Anzahl der WAIT-Testframes).
+           Bereinigt: ohne WAIT-Frames trainiert und getestet. $\Delta$ =
+           Bereinigt $-$ Ursprünglich (MOVE).}
+  \label{tab:cleaning}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{c cccc cc c}
+    \toprule
+    & \multicolumn{4}{c}{Ursprüngliche Labels} & \multicolumn{2}{c}{Bereinigte Labels} & \\
+    \cmidrule(lr){2-5}\cmidrule(lr){6-7}
+    Sitzung & Alle & MOVE & WAIT & $n_W$ & Test & Konst. & $\Delta$ \\
+    \midrule
+    19 & 17,76 & 13,28 & 41,12 & 8  & 13,06 & 29,07 & $-0,22$ \\
+    20 & 14,64 & 12,24 & 28,38 & 8  & 12,77 & 30,71 & $+0,53$ \\
+    21 & 12,51 &  9,77 & 27,59 & 10 &  9,79 & 29,23 & $+0,01$ \\
+    22 & 13,02 & 10,21 & 27,64 & 8  &  9,96 & 31,71 & $-0,25$ \\
+    23 & 23,65 & 20,95 & 41,84 & 10 & 17,18 & 30,92 & $-3,77$ \\
+    24 & 26,97 & 24,96 & 41,93 & 10 & 23,99 & 31,64 & $-0,97$ \\
+    25 & 24,61 & 21,63 & 44,36 & 10 & 17,94 & 30,49 & $-3,70$ \\
+    26 & 18,61 & 14,34 & 41,72 & 10 & 14,58 & 30,20 & $+0,24$ \\
+    27 & 26,06 & 23,10 & 44,80 & 8  & 23,69 & 30,59 & $+0,60$ \\
+    \midrule
+    Mittel & 19,76 & 16,72 & 37,71 & 9,1 & 15,88 & 30,51 & $-0,84$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Ergebnis.} Die WAIT-Frames werden sehr schlecht vorhergesagt
+(\SI{37,7}{\percent}, über der Konstant-Baseline): Der Blick ist noch nicht
+auf dem Ziel, ihre Labels sind also falsch. Werden sie nur aus der
+\emph{Test}menge entfernt, sinkt der Fehler von \SI{19,76}{\percent} auf
+\SI{16,72}{\percent}. Werden sie auch aus den \emph{Trainings}daten entfernt,
+sinkt er weiter auf \SI{15,88}{\percent}, ein mittlerer Gewinn von \num{0,84}
+Prozentpunkten, der nicht signifikant ist (Wilcoxon $p=0,43$). Der Gewinn
+stammt aus zwei Sitzungen mit unruhigem Hintergrund (S23, S25, etwa $-3,7$
+Punkte); in den ruhigen Sitzungen liegt der Unterschied unter \num{0,6}
+Punkten. Fazit: Die WAIT-Frames sollten zumindest aus der Auswertung entfernt
+werden, weil sie den Labelfehler und nicht den Modellfehler messen; sie auch
+aus dem Training zu entfernen, kostet nichts und hilft in schwierigen
+Sitzungen, der Effekt ist aber klein.
+
+\paragraph{Variabilität von Lauf zu Lauf.} Ein früherer, ungültiger Vergleich
+bestand aus zwei Notebook-Läufen derselben Konfiguration auf identischen Daten
+(Gen~4, Zufalls-Seeds nicht fest). Sie unterschieden sich im Mittel um
+\num{1,9} und höchstens um \num{5,5} Prozentpunkte. Die neuen Läufe mit drei
+festen Seeds (\cref{tab:loading}) zeigen eine Standardabweichung von bis zu
+\num{3,1} Prozentpunkten zwischen den Seeds. Unterschiede zwischen
+\emph{einzelnen} Läufen in dieser Größenordnung sind daher nicht
+interpretierbar; das erklärt auch die oben genannten Fälle S05/S09.
+
+\subsection{Aufnahmebedingungen (Gen 4)}
+\label{sec:conditions}
+
+Gen~4 erlaubt Vergleiche, in denen sich nur ein Faktor ändert. Jeder Wert ist
+die Differenz zweier einzelner Sitzungen (Testfehler aus \cref{tab:sessions},
+\code{norm\_subject} / \code{norm\_random}, Prozentpunkte; positiv = die erste
+Bedingung ist schlechter):
+\begin{itemize}[nosep]
+  \item \textbf{Brille} (mit $-$ ohne): $+5,2/+3,6$ (S19--S21),
+        $+1,6/+0,6$ (S20--S22), $-3,3/-3,4$ (S23--S24), $+6,0/+6,2$ (S25--S26);
+  \item \textbf{Dauer} (\SI{90}{\second} $-$ \SI{120}{\second}):
+        $-3,1/-3,9$ (S20--S19), $+0,5/-0,9$ (S22--S21);
+  \item \textbf{Hintergrund} (unruhig $-$ ruhig): $+5,9/+7,2$ (S23--S19),
+        $+14,5/+14,2$ (S24--S21);
+  \item \textbf{Betriebssystem} (Windows $-$ Ubuntu): $+1,0/+0,1$
+        (S25--S23), $-8,4/-9,4$ (S26--S24).
+\end{itemize}
+Der einzige einheitliche und große Effekt ist der \textbf{Hintergrund}: Ein
+unruhiger Hintergrund erhöht den Fehler mit beiden Basismodellen um 6--15
+Prozentpunkte. Eine Brille erhöht den Fehler tendenziell (drei von vier
+Paaren), die Aufnahmelänge (90 vs.\ 120\,s) zeigt keinen klaren Effekt, und
+der Vergleich der Betriebssysteme ist widersprüchlich. Jede Bedingung ist
+durch einzelne Sitzungen vertreten, daher sind diese Werte beschreibend und
+nicht statistisch getestet.
+
+% ==============================================================================
+\section{Strategien zum Laden der Daten (E2)}
+\label{sec:loading}
+% ==============================================================================
+
+Der zufällige Split aus \cref{sec:sessions} hat eine Schwäche: Benachbarte
+Frames eines Videos sind fast identisch (6 Labels pro Sekunde), sodass die
+Testmenge Beinahe-Duplikate von Trainingsframes enthält. Das ist eine Form
+von Datenleck (Data Leakage), die den zufälligen Split optimistisch macht.
+Der folgende Vergleich misst, wie groß dieser Effekt ist.
+
+\paragraph{Sitzungen.} Verwendet werden die Sitzungen 21 und 22. Sie werden
+nach einer festen Regel ausgewählt: Sie sind die einzigen zwei Sitzungen, die
+sich nur in einem Faktor unterscheiden (Dauer, \SI{120}{\second} vs.\
+\SI{90}{\second}), und wurden ansonsten unter den besten Bedingungen
+aufgenommen (Gen~4, ohne Brille, ruhiger Hintergrund, Ubuntu, gleicher Tag).
+Das macht sie für den Transfer zwischen zwei Videos geeignet, und beide haben
+genug Frames (720 und 540) für zeitliche Blöcke.
+
+\paragraph{Strategien.}
+\begin{description}[nosep]
+  \item[Zufällige Auswahl] (\code{--split random}): \SI{70}{\percent} /
+        \SI{15}{\percent} / \SI{15}{\percent} der Frames werden zufällig aus
+        der Sitzung gezogen (Referenz; enthält Beinahe-Duplikate).
+  \item[Sequenzielle Auswahl] (\code{--split sequential}): Die Frames bleiben
+        in Aufnahmereihenfolge; die ersten \SI{70}{\percent} werden für das
+        Training, die nächsten \SI{15}{\percent} für die Validierung und die
+        letzten \SI{15}{\percent} für den Test verwendet. Eine Sekunde (6
+        Labels) am Anfang des Validierungs- und des Testblocks wird verworfen,
+        damit keine benachbarten Frames auf beiden Seiten einer Blockgrenze
+        liegen. Das entspricht dem realen Anwendungsfall: Der Nutzer
+        kalibriert zuerst und verwendet den Tracker danach.
+  \item[Training mit zwei Videos] (\code{--split two\_videos}):
+        \SI{80}{\percent} der Frames der ersten Sitzung werden für das
+        Training und die übrigen \SI{20}{\percent} (zufällig) für die
+        Validierung verwendet; die zweite Sitzung dient \emph{nur} dem Test
+        (alle Frames). Beide Richtungen werden ausgeführt (21$\to$22 und
+        22$\to$21). Das misst, ob sich eine Kalibrierung auf eine neue
+        Aufnahme derselben Person übertragen lässt.
+\end{description}
+
+\paragraph{Fairer Vergleich.} Alle Strategien verwenden dasselbe Basismodell
+(\code{norm\_subject}), dieselben Trainingseinstellungen, Early Stopping auf
+ihren eigenen Validierungsdaten und dieselben drei Seeds (42, 43, 44). Für
+jeden Lauf werden die Konstant-Baseline (Mittelwert der
+\emph{Trainings}ziele, ausgewertet auf den Testframes dieses Laufs) und der
+Fehler des unveränderten Basismodells auf denselben Testframes angegeben,
+damit die unterschiedlichen Testmengen vergleichbar sind. Kein Testframe wird
+für das Training oder die Modellauswahl verwendet.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Strategien zum Laden der Daten (Sitzungen 21 und 22, Basismodell
+           \code{norm\_subject}, ursprüngliche Labels). Mittelwert über drei
+           Seeds; SD: Standardabweichung des Testfehlers über die Seeds;
+           Basis: unverändertes Basismodell; Red.: Verringerung des
+           Testfehlers relativ zur Konstant-Baseline; $n$: Trainings- /
+           Validierungs- / Testframes; $t$: Dauer eines Laufs (s).}
+  \label{tab:loading}
+  \footnotesize
+  \setlength{\tabcolsep}{3.5pt}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{l c cc c cc c c c}
+    \toprule
+    Strategie & Training $\to$ Test & Test (\%) & SD & Val.\ (\%) & Basis (\%) & Konst.\ (\%) & Red.\ (\%) & $n$ & $t$ (s) \\
+    \midrule
+    Zufällig    & 21 $\to$ 21 & 14,40 & 3,13 & 14,15 & 31,52 & 31,25 & 53,9 & 503 / 108 / 109 & 3,9 \\
+                & 22 $\to$ 22 & 13,30 & 0,38 & 15,98 & 30,97 & 30,68 & 56,7 & 378 / 81 / 81   & 3,1 \\
+    Sequenziell & 21 $\to$ 21 & 14,47 & 1,22 & 19,09 & 27,62 & 27,43 & 47,2 & 503 / 102 / 103 & 2,0 \\
+                & 22 $\to$ 22 & 16,63 & 0,14 & 14,41 & 28,83 & 29,91 & 44,4 & 378 / 75 / 75   & 2,4 \\
+    Zwei Videos & 21 $\to$ 22 & 16,79 & 0,13 & 15,67 & 31,05 & 32,17 & 47,8 & 576 / 144 / 540 & 5,0 \\
+                & 22 $\to$ 21 & 17,70 & 0,42 & 14,33 & 32,03 & 33,13 & 46,6 & 432 / 108 / 720 & 3,2 \\
+    \midrule
+    \multicolumn{2}{l}{Zufällig (Mittel)}    & 13,85 & & & 31,25 & 30,97 & 55,3 & & \\
+    \multicolumn{2}{l}{Sequenziell (Mittel)} & 15,55 & & & 28,22 & 28,67 & 45,8 & & \\
+    \multicolumn{2}{l}{Zwei Videos (Mittel)} & 17,24 & & & 31,54 & 32,65 & 47,2 & & \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+\paragraph{Ergebnis.} Die erwartete Reihenfolge wird bestätigt: zufällig
+(\SI{13,85}{\percent}) $<$ sequenziell (\SI{15,55}{\percent}) $<$ zwei Videos
+(\SI{17,24}{\percent}). Mit 6 Läufen pro Strategie (zwei Sitzungen $\times$
+drei Seeds) ist nur der Unterschied zwischen sequenziellem Training und
+Training mit zwei Videos signifikant (Mann-Whitney U, $p=0,009$); zufällig
+vs.\ sequenziell ($p=0,09$) und zufällig vs.\ zwei Videos ($p=0,06$) sind es
+nicht. Da sich die Konstant-Baselines zwischen den Testmengen unterscheiden,
+ist die relative Verringerung das fairere Maß: \SI{55}{\percent} beim
+zufälligen Split, aber nur \SI{46}{\percent}--\SI{47}{\percent} bei den
+realistischen Strategien. Der zufällige Split überschätzt den Nutzen der
+Personalisierung also um etwa 8--9 Prozentpunkte der Verringerung.
+
+\paragraph{Interpretation.}
+\begin{itemize}[nosep]
+  \item Der zufällige Split ist optimistisch, auf diesen beiden guten
+        Sitzungen aber nur mäßig (1,7 Prozentpunkte). Bei schwierigen
+        Sitzungen ist der Effekt viel größer (\cref{sec:design_performance}).
+  \item Eine Kalibrierung überträgt sich auf eine zweite Aufnahme derselben
+        Person unter denselben Bedingungen: Das Modell mit zwei Videos
+        erreicht auf einem nie gesehenen Video
+        \SI{17}{\percent}--\SI{18}{\percent} bei \SI{47}{\percent}
+        Verringerung. Der Transfer kostet gegenüber dem zufälligen Split etwa
+        3 Prozentpunkte.
+  \item Die Ergebnisse mit zwei Videos schwanken am wenigsten zwischen den
+        Seeds (SD unter 0,5), da die Testmenge groß ist (540--720 Frames).
+        Der zufällige Split hat die größte Streuung (SD 3,1 in S21), weil
+        seine 81--109 Testframes vom Seed abhängen.
+  \item Der Validierungsfehler des sequenziellen Splits sagt seinen
+        Testfehler schlecht voraus (S21: \SI{19,1}{\percent} Validierung vs.\
+        \SI{14,5}{\percent} Test), weil Validierungs- und Testblock
+        unterschiedliche Bildschirmbereiche abdecken.
+\end{itemize}
+Für den Anwendungsfall eines Eye-Trackers, der einmal kalibriert und danach
+benutzt wird, sind die Werte des sequenziellen Splits bzw.\ der zwei Videos
+die realistische Schätzung.
+
+% ==============================================================================
+\section{Gestaltung der Personalisierungssitzung}
+\label{sec:session_design}
+% ==============================================================================
+
+Die Gestaltung der Sitzung bestimmt, welche Bildschirmpositionen durch die
+Kalibrierdaten abgedeckt werden. Da die Fehler an den Rändern und in den Ecken
+am größten sind (\cref{sec:spatial}), soll die Gestaltung diese Bereiche gut
+abdecken. Es wurden drei Varianten aufgenommen:
+\begin{itemize}[nosep]
+  \item \textbf{Standardvideo} (Gen~1, \code{base\_Code.py}): Das Ziel bewegt
+        sich kontinuierlich und ohne Sprünge über den Bildschirm;
+  \item \textbf{Zufällige Sprungpunkte} (Gen~2): Das Ziel springt alle
+        \SI{1,4}{}--\SI{2,7}{\second} zu einem gleichverteilt gezogenen neuen
+        Startpunkt;
+  \item \textbf{Eckengewichtete Sprungpunkte} (Gen~4,
+        \code{base\_Code\_rand.py}): 5-s-Segmente mit \SI{0,5}{\second} WAIT
+        an einem neuen Startpunkt und \SI{4,5}{\second} MOVE;
+        \SI{90}{\percent} der Startpunkte liegen in den vier Eckbereichen (je
+        \SI{10}{\percent}\,$\times$\,\SI{10}{\percent} des Bildschirms).
+\end{itemize}
+
+\subsection{Räumliche Abdeckung und Übergangsframes}
+
+\Cref{tab:design} wird direkt aus den Label- und Positionsdateien der 18
+Sitzungen berechnet (\code{session\_design.py}); ein Training ist nicht
+nötig. Die Regionsanteile verwenden die Bildschirmeinteilung aus
+\cref{sec:partition} ($r=0,15$). Übergangsframes sind Labels, die
+aufgenommen wurden, während sich der Blick noch zu einem neuen Ziel bewegt:
+in Gen~4 die protokollierte WAIT-Phase, in Gen~2 die Labels innerhalb von
+\SI{0,5}{\second} nach einem Sprung (geschätzt, keine Phasenprotokollierung),
+in Gen~1 keine.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Räumliche Abdeckung und Übergangsframes pro Gestaltung
+           (Mittelwert über die Sitzungen jeder Generation). Zellen: Anteil
+           der 100 Zellen eines $10\times10$-Bildschirmrasters, die mindestens
+           ein Label enthalten; Abst.: mittlerer Abstand der Ziele von der
+           Bildschirmmitte (normierte Einheiten).}
+  \label{tab:design}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{l c c c c ccc c c}
+    \toprule
+    Gestaltung & Labels & Länge & Sprünge & Übergang & \multicolumn{3}{c}{Anteil der Labels (\%)} & Zellen & Abst. \\
+    \cmidrule(lr){6-8}
+               &        & (s)   &         & (\%)     & Mitte & Ränder & Ecken & (\%) & \\
+    \midrule
+    Standard (Gen 1, 4 Sitz.)          & 493 & 82  & 0  & 0           & 7,1 & 25,0 & 23,0 & 97 & 0,383 \\
+    Zufällige Sprünge (Gen 2, 5 Sitz.) & 179 & 30  & 16 & 28,5\textsuperscript{a} & 6,3 & 23,0 & 26,3 & 57 & 0,384 \\
+    Eckengewichtet (Gen 4, 9 Sitz.)    & 644 & 107 & 20 & 10,1        & 6,1 & 19,5 & 36,1 & 91 & 0,420 \\
+    \bottomrule
+  \end{tabular}}\\[1mm]
+  \parbox{0.95\linewidth}{\footnotesize \textsuperscript{a}\,Geschätzt:
+  Labels innerhalb von \SI{0,5}{\second} nach einem Sprung.}
+\end{table}
+
+\paragraph{Beobachtungen.}
+\begin{itemize}[nosep]
+  \item \textbf{Die Eckengewichtung wirkt wie beabsichtigt:} Gen~4 hat
+        \SI{36}{\percent} seiner Labels in den Eckumgebungen, verglichen mit
+        \SI{23}{\percent} (Gen~1) und \SI{26}{\percent} (Gen~2), und den
+        größten mittleren Abstand von der Mitte.
+  \item \textbf{Eine kontinuierliche Bewegung deckt den Bildschirm am
+        gleichmäßigsten ab:} Gen~1 erreicht \SI{97}{\percent} der
+        Rasterzellen. Die kurzen Gen-2-Aufnahmen (\SI{30}{\second}) decken nur
+        \SI{57}{\percent} ab.
+  \item \textbf{Übergangsframes:} Mit Sprüngen alle 1,4--2,7 Sekunden und
+        ohne Phasenprotokollierung fällt bis zu ein Drittel der Gen-2-Labels in
+        einen Übergang; Gen~4 hat \SI{10}{\percent}, die exakt protokolliert
+        sind und entfernt werden können (\cref{sec:cleaning}).
+\end{itemize}
+
+\subsection{Leistung der Personalisierung (E3)}
+\label{sec:design_performance}
+
+Der zufällige Split begünstigt Gestaltungen mit langsamer, kontinuierlicher
+Bewegung, weil benachbarte, fast identische Frames in Trainings- und
+Testdaten landen. Deshalb wurden alle 18 Sitzungen zusätzlich mit dem
+sequenziellen Split ausgeführt (\cref{sec:loading}; Basismodell
+\code{norm\_subject}, Seed 42). \Cref{tab:design_perf} vergleicht beide Splits
+pro Gestaltung, und \cref{tab:region_errors} zeigt die Fehler pro
+Bildschirmregion, berechnet aus den gespeicherten Testvorhersagen.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Testfehler pro Gestaltung mit zufälligem und sequenziellem Split
+           (Mittelwert über die Sitzungen; Basismodell \code{norm\_subject}).
+           Konst.: Konstant-Baseline der jeweiligen Testframes; Ep.~0: Anzahl
+           der Sitzungen, in denen die beste Epoche~0 war (keine Verbesserung
+           gegenüber dem Basismodell); $n_{\text{Test}}$: mittlere Anzahl der
+           Testframes.}
+  \label{tab:design_perf}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{l cc cccc}
+    \toprule
+    & \multicolumn{2}{c}{Zufälliger Split} & \multicolumn{4}{c}{Sequenzieller Split} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-7}
+    Gestaltung & Test & Konst. & Test & Konst. & Ep.~0 & $n_{\text{Test}}$ \\
+    \midrule
+    Standard (Gen 1)          & 15,29 & 29,22 & 21,52 & 28,70 & 1 / 4 & 69 \\
+    Zufällige Sprünge (Gen 2) & 23,45 & 29,44 & 32,80 & 34,39 & 2 / 5 & 22 \\
+    Eckengewichtet (Gen 4)    & 19,76 & 31,31 & 28,07 & 31,82 & 5 / 9 & 91 \\
+    \midrule
+    Alle (18)                 & 19,79 & 30,32 & 27,93 & 31,84\textsuperscript{a} & 8 / 18 & 72 \\
+    \bottomrule
+  \end{tabular}\\[1mm]
+  \parbox{0.9\linewidth}{\footnotesize \textsuperscript{a}\,Mittelwert der
+  Sitzungswerte des sequenziellen Splits.}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Testfehler pro Bildschirmregion (\cref{sec:partition}, $r=0,15$),
+           Mittelwert über die Sitzungen einer Gestaltung; in Klammern die
+           Gesamtzahl der Testframes in der Region. Basismodell
+           \code{norm\_subject}.}
+  \label{tab:region_errors}
+  \footnotesize
+  \setlength{\tabcolsep}{3.5pt}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{l cccc cccc}
+    \toprule
+    & \multicolumn{4}{c}{Zufälliger Split} & \multicolumn{4}{c}{Sequenzieller Split} \\
+    \cmidrule(lr){2-5}\cmidrule(lr){6-9}
+    Gestaltung & Alle & Mitte & Ränder & Ecken & Alle & Mitte & Ränder & Ecken \\
+    \midrule
+    Standard (Gen 1)          & 15,3 & 17,7 (20) & 13,5 (67) & 16,7 (83)  & 21,5 & 11,9 (25) & 20,9 (64)  & 28,9 (52) \\
+    Zufällige Sprünge (Gen 2) & 23,4 & 13,7 (12) & 21,6 (34) & 26,1 (42)  & 32,8 & 6,6 (2)\textsuperscript{a} & 29,8 (15) & 38,6 (45) \\
+    Eckengewichtet (Gen 4)    & 19,8 & 11,5 (45) & 14,9 (175) & 26,5 (299) & 28,1 & 9,0 (60) & 23,9 (136) & 37,1 (289) \\
+    \midrule
+    Alle (18)                 & 19,8 & 13,5 (77) & 16,4 (276) & 24,2 (424) & 27,9 & 9,7 (87) & 24,3 (215) & 36,1 (386) \\
+    \bottomrule
+  \end{tabular}}\\[1mm]
+  \parbox{0.95\linewidth}{\footnotesize \textsuperscript{a}\,Nur eine Sitzung
+  mit zwei Frames in der Mitte; nicht interpretierbar.}
+\end{table}
+
+\paragraph{Sequenzieller Split.} Ohne Beinahe-Duplikate steigt der Fehler in
+jeder Gestaltung, im Mittel von \SI{19,8}{\percent} auf \SI{27,9}{\percent}
+(Wilcoxon $p=4\cdot10^{-5}$). Das personalisierte Modell ist immer noch besser
+als die Konstant-Baseline (Wilcoxon $p=0,002$), die Verringerung schrumpft
+aber von \SI{35}{\percent} auf etwa \SI{12}{\percent}. In 8 von 18 Sitzungen
+(02, 05, 08, 23--27) ist die beste Epoche~0: Das Training auf den ersten
+\SI{70}{\percent} der Aufnahme verbessert den Fehler auf dem
+Validierungsblock nicht, das angegebene Ergebnis ist also das unveränderte
+Basismodell. Das geschieht vor allem in Gen~4 mit unruhigem Hintergrund
+(23--27) und in den kurzen Gen-2-Aufnahmen, deren Validierungs- und
+Testblöcke nur 17--27 Frames enthalten. Der zufällige Split aus
+\cref{sec:sessions} überschätzt daher den Nutzen der Personalisierung bei
+schwierigen Sitzungen stark.
+
+\paragraph{Gestaltungen.} Bei beiden Splits hat das Standardvideo (Gen~1) den
+niedrigsten und die zufälligen Sprünge (Gen~2) den höchsten Fehler; auch mit
+dem sequenziellen Split sind die Unterschiede nicht signifikant
+(Kruskal-Wallis $p=0,06$). Die Rangfolge lässt sich durch die Abdeckung
+erklären (\cref{tab:design}): Gen~1 deckt in jedem Teil der Aufnahme
+\SI{97}{\percent} des Bildschirms ab, während bei den Sprung-Gestaltungen ein
+zeitlicher Block nur die in dieser Zeit gezeigten Ziele abdeckt. Die kurzen
+Gen-2-Aufnahmen leiden am stärksten darunter. Die Gestaltungen sind weiterhin
+mit Beleuchtung, Hintergrund und Brille vermengt, die Rangfolge ist also eine
+Tendenz und kein Beweis.
+
+\paragraph{Regionen.} Die Ecken sind in jeder Gestaltung und bei beiden
+Splits die schwierigste Region (\SI{24}{\percent} zufällig,
+\SI{36}{\percent} sequenziell), die Mitte die einfachste
+(\SI{10}{}--\SI{14}{\percent}). Die eckengewichtete Gestaltung senkt den
+Eckfehler \emph{nicht}: Gen~4 hat \SI{26,5}{\percent} / \SI{37,1}{\percent}
+in den Ecken, verglichen mit \SI{16,7}{\percent} / \SI{28,9}{\percent} beim
+Standardvideo. Mehr Ecklabels allein helfen nicht, wenn der Blick in den
+Ecken schwerer zu schätzen ist (Kopfdrehung, teilweise geschlossene Augen,
+Kamerageometrie) und wenn die Ecklabels unter schlechteren Bedingungen
+aufgenommen wurden (Gen-4-Sitzungen 23--27). Die äußersten Ecken sind außerdem
+die Punkte, an denen die Sigmoid-Ausgabe nahe 0 oder 1 liegen muss.
+
+\paragraph{Folgerung für die Gestaltung.} Für eine kurze Kalibrierung liefert
+mit den vorhandenen Daten eine kontinuierliche Zielbewegung, die den ganzen
+Bildschirm abdeckt, das beste Ergebnis. Sprünge erzeugen Übergangsframes
+(Gen~2: bis zu \SI{28}{\percent} der Labels) und müssen, wenn sie verwendet
+werden, protokolliert werden, damit diese Frames entfernt werden können. Die
+Eckengewichtung erhöht den Anteil der Ecklabels wie beabsichtigt, senkt aber
+nicht den Eckfehler.
+
+% ==============================================================================
+\section{Diskussion}
+\label{sec:discussion}
+% ==============================================================================
+
+\paragraph{Hauptergebnis.}
+Auf GazeCapture erreichen alle Konfigurationen der Hyperparameterstudie
+praktisch den Fehler eines konstanten Schätzers auf denselben Testdaten: Die
+besten Konfigurationen mit \enquote{nur FC} liegen zwischen
+\SI{28,32}{\percent} und \SI{28,39}{\percent}, die Konstant-Baseline bei
+\SI{28,46}{\percent}. Die räumliche Analyse bestätigt, dass sich die
+Vorhersagen in der Bildschirmmitte konzentrieren. Folglich trennt die
+Hyperparameterstudie die Konfigurationen vor allem nach ihrer
+\emph{Stabilität}: Optionen, die das Training weniger stabil machen (Gauß,
+ReLU, keine Aktivierung, Auftauen von Backbone-Schichten, sensitiver Verlust),
+sind schlechter, aber keine Option verlässt deutlich die Mittelpunktlösung.
+Die Entscheidungen in \cref{sec:training} beruhen daher auf Stabilität,
+Konvergenz, Aufwand und methodischen Argumenten, wie in jedem Unterabschnitt
+angegeben. Einzelne Notebook-Läufe auf \code{norm\_random}
+(\cref{fig:lr_curves,fig:normalized_targets}) erreichten etwa
+\SI{23,6}{\percent} gegenüber \SI{26,8}{\percent} für die Konstant-Baseline;
+ein kleiner Lerneffekt existiert also, ist aber in den Mittelwerten über fünf
+Läufe nicht sichtbar. Die Basismodelle der Personalisierung bestätigen das:
+Ihr Fehler auf den persönlichen Sitzungen (\SI{30,6}{\percent}) entspricht
+der Konstant-Baseline.
+
+\paragraph{Mögliche Ursachen.} Das neue Protokoll schließt bereits zwei
+Erklärungen aus, die für die früheren Läufe plausibel waren: Die
+Trainingsteilmenge enthält jetzt 179 statt fünf Personen, und die Testmenge
+wird nicht mehr für die Modellauswahl verwendet; der Kollaps bleibt bestehen.
+Die wahrscheinlichsten verbleibenden Ursachen sind:
+(i) Es werden vollständige Kamerabilder verwendet, in denen die Augen nur
+einen kleinen Teil des Bildes einnehmen, sodass die eingefrorenen
+ImageNet-Merkmale wenig Blickinformation tragen;
+(ii) \num{1000} Frames von 179 Personen sind nur etwa sechs Frames pro Person,
+zu wenig, um eine personenunabhängige Abbildung zu lernen; das Auftauen
+weiterer Schichten mit so wenigen Daten macht das Training instabil statt
+besser (\cref{sec:layers}).
+Gesichts- oder Augenausschnitte als Eingabe und größere Trainingsmengen sind
+die nächsten zu prüfenden Schritte.
+
+\paragraph{Personalisierung.}
+Mit demselben eingefrorenen Backbone senkt ein Kopf, der auf einigen hundert
+Frames einer Person trainiert wurde, den Fehler gegenüber der
+Konstant-Baseline um etwa ein Drittel (zufälliger Split), und das in etwa
+zwei Sekunden auf einer CPU. Die Wahl des Basismodells spielt keine Rolle.
+Das stützt die zentrale Idee dieser Arbeit, die dateneffiziente
+Personalisierung eines vortrainierten Modells. Zwei Einschränkungen sind
+wichtig: (i) Der zufällige Split ist optimistisch; mit einem zeitlichen Split
+sinkt die Verringerung im Mittel auf etwa \SI{12}{\percent} und in schwierigen
+Sitzungen auf null, während gute Sitzungen den größten Teil des Gewinns
+behalten und sich eine Kalibrierung sogar auf eine zweite Aufnahme überträgt
+(\SI{47}{\percent} Verringerung, \cref{sec:loading}); (ii) die
+Aufnahmebedingungen (Hintergrund, Beleuchtung, Brille) beeinflussen das
+Ergebnis stärker als die Gestaltung der Sitzung.
+
+\paragraph{Folgen für den Code.} Die Evaluationsmetrik wurde korrigiert,
+Baselines werden auf derselben Teilmenge wie das Modell berechnet, zufällige
+Teilmengen (\code{--sample-seed}) und eine personendisjunkte
+Validierungsmenge (\code{--val-size}) wurden zu \code{exp.py} hinzugefügt, und
+vollständiges Fine-Tuning (\code{fc\_resnet}) kann mit \code{--include-resnet}
+einbezogen werden. Die Personalisierungsläufe sind reproduzierbar (feste
+Seeds, eingefrorene BatchNorm, Merkmals-Cache, gespeicherte Vorhersagen,
+\code{personal\_exp.py}).
+
+% ==============================================================================
+\section{Zusammenfassung der experimentellen Ergebnisse}
+\label{sec:summary}
+% ==============================================================================
+
+\Cref{tab:summary} fasst alle Experimente zusammen. \enquote{Signifikant}
+bedeutet $p<0,05$ im jeweils im Abschnitt angegebenen Test. Alle Fehler sind
+Diagonalfehler (\cref{eq:ediag}) in \si{\percent}. MAE und MSE wurden in
+diesen Experimenten nicht protokolliert; sie werden daher nicht angegeben,
+und der Diagonalfehler (ein skalierter euklidischer RMSE) ist das einzige
+Genauigkeitsmaß, das für alle Experimente verfügbar und vergleichbar ist.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Zusammenfassung der experimentellen Ergebnisse und der gewählten
+           Konfiguration. GazeCapture: \code{norm\_subject},
+           \num{1000}/\num{200} zufällige Frames, fünf Läufe,
+           Konstant-Baseline \SI{28,46}{\percent}; Zeit = mittlere Dauer eines
+           Trainingslaufs in Minuten (Kopf auf zwischengespeicherten
+           Merkmalen). Personalisierung: Mittelwert über die Sitzungen, Zeit =
+           ein Sitzungslauf in Sekunden (\cref{sec:session_time}).}
+  \label{tab:summary}
+  \footnotesize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.3cm} >{\raggedright\arraybackslash}p{2.2cm} r r Y}
+    \toprule
+    Experiment & Gewählt & Fehler (\%) & Zeit & Ergebnis und Begründung \\
+    \midrule
+    Baselines        & ---                 & 28,46 & --- & Konstant-Baseline auf denselben Testdaten; Zufalls-Baseline 40,36 (\cref{sec:baselines}) \\
+    Zieldarstellung  & normiert $[0,1]^2$  & --- & --- & geräteunabhängig; Metrik wohldefiniert (\cref{sec:normalization}) \\
+    Batchgröße       & 32                  & 28,39 & 0,019\,min & kein signifikanter Unterschied (\cref{sec:batch}) \\
+    Lernrate         & $10^{-4}$           & 28,37 & 0,020\,min & kein signifikanter Unterschied; beste Konvergenz in den Kurven (\cref{sec:lr}) \\
+    Trainierbare Schichten & nur FC        & 28,36 & 0,015\,min & niedrigster und stabilster Fehler; FC + Layer 4: 9,2\,min, voll: 15,4\,min (\cref{sec:layers}) \\
+    Aktivierung      & Sigmoid             & \textbf{28,36} & 0,022\,min & \textbf{signifikant} besser als Gauß, ReLU, Keine (\cref{sec:activation}) \\
+    Verlustfunktion  & L1                  & \textbf{28,32} & 0,011\,min & \textbf{signifikant} besser als der sensitive Verlust (\cref{sec:loss_results}) \\
+    Datensatzgröße   & \num{1000}/\num{200} & 28,39 & 0,018\,min & größere Menge nur wegen anderer Testmenge besser (\cref{sec:size}) \\
+    Datensplit       & \code{norm\_subject} & 28,39 & 0,020\,min & einziger Split, der die Generalisierung auf unbekannte Personen misst (\cref{sec:split}) \\
+    \midrule
+    Personalisierung (E1) & nur FC, 18~Sitzungen & \textbf{19,79} & 1,9\,s & \textbf{signifikant} besser als Konstant-Baseline (30,32) und Basismodell (30,57), $-$\SI{35}{\percent} (\cref{sec:sessions_results}) \\
+    Basismodell (E0/E1) & \code{norm\_subject} & 19,79 & 1,9\,s & gleich wie \code{norm\_random} (19,59; 2,4\,s; $p=0,20$); gewählt, weil es keine Information über die Testpersonen enthält \\
+    Label-Bereinigung (E1b) & WAIT-Frames entfernen & 15,88 & --- & vs.\ 16,72 auf denselben MOVE-Testframes; $-0,84$, nicht signifikant; WAIT-Frames selbst 37,7 (\cref{sec:cleaning}) \\
+    Laden der Daten (E2) & sequenziell / zwei Videos & 15,55 / 17,24 & 2--5\,s & zufällig 13,85 ist optimistisch; zwei Videos signifikant schlechter als sequenziell; Kalibrierung überträgt sich auf ein neues Video ($-$\SI{47}{\percent}) (\cref{sec:loading}) \\
+    Sitzungsgestaltung (E3) & Standardvideo & 15,29 / 21,52 & --- & zufälliger / sequenzieller Split; zufällige Sprünge 23,45 / 32,80, eckengewichtet 19,76 / 28,07; nicht signifikant und vermengt; Eckengewichtung senkt den Eckfehler nicht (\cref{sec:design_performance}) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\renewcommand{\bibname}{Literaturverzeichnis}
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}
