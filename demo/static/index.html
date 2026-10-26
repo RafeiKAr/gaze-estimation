@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gaze Demo</title>
+  <link rel="stylesheet" href="/static/style.css?v=20261026e">
+</head>
+<body>
+
+<!-- 1. Startseite ---------------------------------------------------------->
+<section id="start" class="page">
+  <div class="card wide">
+    <h1>Webcam-Eye-Tracking mit Personalisierung</h1>
+    <p class="lead">Demo zur Masterarbeit „Dateneffiziente Personalisierung für webcam-basiertes
+      Eye-Tracking mithilfe vortrainierter Bildverarbeitungsmodelle“ (Khaled Rafei).</p>
+
+    <div class="cols">
+      <div>
+        <h2>Ablauf</h2>
+        <ol>
+          <li><b>Kalibrierung (ca. 60 s):</b> Folge dem roten Punkt nur mit den Augen.
+              Halte den Kopf möglichst ruhig.</li>
+          <li><b>Anpassung (wenige Sekunden):</b> Das Modell lernt aus deinen Bildern.</li>
+          <li><b>Blickverfolgung:</b> Ein Lichtfleck zeigt, wohin du schaust.
+              Seine Größe zeigt die Unsicherheit.</li>
+          <li><b>Auswertung:</b> Heatmap und Zeitleiste – wann hast du wohin geschaut?</li>
+        </ol>
+        <h2>Tipps</h2>
+        <ul>
+          <li>Helles, gleichmäßiges Licht von vorne, ruhiger Hintergrund.</li>
+          <li>Laptop und Kopf während Kalibrierung und Verfolgung nicht bewegen.</li>
+          <li>Abstand zur Kamera wie bei normaler Arbeit (ca. 50–70 cm).</li>
+        </ul>
+      </div>
+      <div>
+        <div class="preview-box">
+          <video id="preview" autoplay playsinline muted></video>
+          <div id="cam-msg" class="cam-msg">Kamera wird gestartet …</div>
+        </div>
+        <label class="small" for="cam-select">Kamera:</label>
+        <select id="cam-select"></select>
+        <p class="small">Im Bild oben muss dein <b>Gesicht</b> gut zu sehen sein (Frontkamera,
+          nicht die Rück- oder Infrarotkamera).</p>
+        <p class="small" id="cam-status">Kamerabild wird geprüft …</p>
+        <p class="small" id="server-status">Server wird geprüft …</p>
+      </div>
+    </div>
+
+    <p class="privacy">🔒 <b>Datenschutz:</b> Die Kamerabilder werden auf dem Server nur im
+      Arbeitsspeicher in Zahlen (Merkmale) umgerechnet und nicht gespeichert. Beim Beenden
+      wird alles gelöscht. Die Auswertung entsteht nur in deinem Browser.</p>
+
+    <button id="btn-start" class="primary" disabled>Kalibrierung starten (Vollbild)</button>
+    <span class="small">Version 26.10.2026 g</span>
+  </div>
+</section>
+
+<!-- 2. Bühne für Kalibrierung und Blickverfolgung (Vollbild) ---------------->
+<section id="stage" class="page hidden">
+  <canvas id="stage-canvas"></canvas>
+  <div id="stage-hud" class="hud"></div>
+  <div id="stage-center" class="center-msg"></div>
+  <div id="stage-progress"><div id="stage-bar"></div></div>
+</section>
+
+<!-- 3. Ergebnis der Kalibrierung ------------------------------------------->
+<section id="result" class="page hidden">
+  <div class="card">
+    <h1>Kalibrierung abgeschlossen</h1>
+    <p class="lead">Gemessen auf 2 von 10 Zeitabschnitten der Kalibrierung (diese Bilder
+      wurden nicht zum Training benutzt). Fehler in % der Bildschirmdiagonale – kleiner ist besser.</p>
+    <div id="bars"></div>
+    <p id="result-test"></p>
+    <p class="small" id="result-details"></p>
+    <p class="small" id="result-diag"></p>
+    <div class="buttons">
+      <button id="btn-track" class="primary">Blickverfolgung starten (Vollbild)</button>
+      <button id="btn-recal">Neu kalibrieren</button>
+    </div>
+    <p class="small">Während der Verfolgung: <b>M</b> = Lichtart (Bühnenlicht / Scheinwerfer / Lichtpunkt) wechseln,
+      <b>V</b> = Vorher/Nachher-Vergleich ein/aus,
+      <b>Esc</b> = Beenden und Auswertung.</p>
+  </div>
+</section>
+
+<!-- 4. Auswertung ---------------------------------------------------------->
+<section id="analysis" class="page hidden">
+  <div class="card wide">
+    <h1>Auswertung</h1>
+    <p class="lead" id="analysis-summary"></p>
+    <div class="heatmaps">
+      <figure><canvas id="heat-before"></canvas>
+        <figcaption>Vorher – Basismodell (ohne Kalibrierung)</figcaption></figure>
+      <figure><canvas id="heat-after"></canvas>
+        <figcaption>Nachher – personalisiertes Modell</figcaption></figure>
+    </div>
+    <h2>Zeitleiste: Welcher Bereich wurde wann betrachtet? (personalisiertes Modell)</h2>
+    <canvas id="timeline"></canvas>
+    <h2>Verlauf der Blickposition (personalisiertes Modell)</h2>
+    <canvas id="position-chart"></canvas>
+    <h2>Zeittabelle: Wo wurde wann ungefähr hingeschaut?</h2>
+    <p class="small">Median der Position in jedem Zeitabschnitt; „sicher“ = Anteil der Messpunkte
+      im angegebenen Bereich.</p>
+    <div id="time-table" class="scroll-table"></div>
+    <h2>Anteil der Zeit pro Bildschirmbereich</h2>
+    <div id="region-table"></div>
+    <div class="buttons">
+      <button id="btn-png" class="primary">Bild herunterladen (PNG)</button>
+      <button id="btn-csv">Alle Messpunkte (CSV)</button>
+      <button id="btn-csv-time">Zeittabelle (CSV)</button>
+      <button id="btn-again">Weiter verfolgen</button>
+      <button id="btn-new">Neu kalibrieren</button>
+    </div>
+  </div>
+</section>
+
+<!-- Kamera für die Aufnahme: muss "sichtbar" bleiben (nicht display:none), sonst
+     hält Chrome das Video an und es kommen immer dieselben Bilder. -->
+<video id="cam" playsinline muted></video>
+<script src="/static/app.js?v=20261026g"></script>
+</body>
+</html>

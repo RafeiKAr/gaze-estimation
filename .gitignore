@@ -101,3 +101,10 @@ Thumbs.db
 # backup-files
 # =========================
 backup_2026-10-21/
+
+# =========================
+# demo
+# =========================
+demo/debug_frames/*.jpg
+demo/debug_frames/*.png
+demo/debug_frames/

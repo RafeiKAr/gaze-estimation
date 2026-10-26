@@ -1,0 +1,9 @@
+# CPU-Version von PyTorch reicht (Installation mit
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt)
+torch>=2.2
+torchvision>=0.17
+fastapi>=0.110
+uvicorn>=0.29
+pillow>=10.0
+numpy>=1.24
+opencv-python-headless>=4.8,<5   # Gesichtsausschnitt (Haar-Kaskade; in OpenCV 5 entfernt)
