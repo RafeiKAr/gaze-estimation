@@ -133,7 +133,27 @@ def calibrate(d: SidIn):
 def predict(d: PredictIn):
     s = get_session(d.sid)
     base, personal = s.predict(decode_image(d.image))
-    return {"base": base, "personal": personal, "error": s.error_after}
+    return {"base": base, "personal": personal, "error": s.error_after,
+            "head": [round(v, 4) for v in getattr(s, "last_head", [])]}
+
+
+class TestFrameIn(BaseModel):
+    sid: str
+    image: str
+    x: float
+    y: float
+    keep: bool = True
+
+
+@app.post("/api/test_frame")
+def test_frame(d: TestFrameIn):
+    s = get_session(d.sid)
+    return {"personal": s.test_frame(decode_image(d.image), d.x, d.y, d.keep)}
+
+
+@app.post("/api/refit")
+def refit(d: SidIn):
+    return get_session(d.sid).refit()
 
 
 class DebugIn(BaseModel):

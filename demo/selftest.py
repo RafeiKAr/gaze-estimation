@@ -76,6 +76,8 @@ print(f"  Nachher (personal.):  {r['error_after']:6.2f} %")
 print(f"  beste Epoche {r['best_epoch']} von {r['epochs']}, Training {r['seconds']} s")
 print(f"  Verfahren: {r['method']}  (MLP-Kopf {r['error_mlp']:.2f} %, Ridge global {r['error_ridge']:.2f} %, "
       f"Ridge räumlich {r['error_spatial']:.2f} %, {r['spatial_dims']} Merkmale)")
+print(f"  Gewicht Kopfposition: räumlich {r['head_weight_spatial']}, global {r['head_weight_ridge']}  "
+      f"(0 = Kopfposition hilft nicht)")
 
 # Gegenprobe: zufälliger Split wie in Kapitel 4 (E1: 70 % Training, 15 % Prüfung,
 # Seed 42). Dieser Split ist optimistisch (fast gleiche Nachbarbilder), zeigt aber,

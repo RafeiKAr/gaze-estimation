@@ -18,7 +18,10 @@ const CONFIG = {
   camWidth: 640,          // Kamerabild, das an den Server geht
   camHeight: 480,
   jpegQuality: 0.8,
-  smoothing: 0.35,        // Glättung der Blickposition (0 = keine Bewegung, 1 = keine Glättung)
+  smoothing: 0.5,         // Glättung der Blickposition (0 = keine Bewegung, 1 = keine Glättung)
+  medianWindow: 3,        // Median über die letzten N Vorhersagen (mehr = ruhiger, aber mehr Verzögerung)
+  gridCols: 3,            // Felder des Bühnenlichts: 3 Spalten x 3 Zeilen
+  gridRows: 3,            //   (in der Adresse änderbar, z. B. ?grid=7x5 für feinere Felder)
   minGlowPx: 40,          // kleinster Radius des Lichtflecks
 };
 // Zum Testen: ?calib=10 in der Adresse = Kalibrierung nur 10 Sekunden
@@ -28,6 +31,8 @@ const urlCalib = Number(urlParams.get("calib"));
 if (urlCalib > 0) CONFIG.calibSeconds = urlCalib;
 const urlRows = Number(urlParams.get("rows"));
 if (urlRows >= 2) CONFIG.rows = Math.round(urlRows);
+const urlGrid = /^(\d+)x(\d+)$/.exec(urlParams.get("grid") || "");
+if (urlGrid) { CONFIG.gridCols = Math.max(1, +urlGrid[1]); CONFIG.gridRows = Math.max(1, +urlGrid[2]); }
 
 // ---------------------------------------------------------------- Hilfen
 const $ = (id) => document.getElementById(id);
@@ -67,7 +72,12 @@ const state = {
   marker: 0,            // 0 = Bühnenlicht (Felder), 1 = Scheinwerfer (folgt dem Blick), 2 = Lichtpunkt
 };
 const MARKERS = ["Bühnenlicht (Felder)", "Scheinwerfer (folgt dem Blick)", "Lichtpunkt"];
-const cellLight = new Array(9).fill(0);   // Helligkeit der 9 Felder (0..1), weich überblendet
+const NCELLS = CONFIG.gridCols * CONFIG.gridRows;
+const cellLight = new Array(NCELLS).fill(0);   // Helligkeit jedes Feldes (0..1), weich überblendet
+/** Nummer des feinen Feldes (Spalte, Zeile) für einen Blickpunkt. */
+const cellOf = (x, y) => Math.min(CONFIG.gridRows - 1, Math.max(0, Math.floor(y * CONFIG.gridRows))) * CONFIG.gridCols +
+  Math.min(CONFIG.gridCols - 1, Math.max(0, Math.floor(x * CONFIG.gridCols)));
+const cellName = (k) => `S${(k % CONFIG.gridCols) + 1}/Z${Math.floor(k / CONFIG.gridCols) + 1}`;
 
 // ---------------------------------------------------------------- Kamera
 const cam = $("cam");
@@ -213,10 +223,11 @@ function pointOnPath(path, frac) {
 
 function drawDot(x, y, pulse) {
   const px = x * W(), py = y * H(), r = 12 + 3 * Math.sin(pulse);
-  // Gleiches Licht wie bei der Verfolgung (ein Feld von 1/3 x 1/3 des Bildschirms um den
-  // Punkt). So spiegelt sich in Kalibrierung und Verfolgung dasselbe helle Feld in Augen
+  // Gleiches Licht wie bei der Verfolgung (ein Feld des Bühnenlichts um den Punkt).
+  // So spiegelt sich in Kalibrierung und Verfolgung dasselbe helle Feld in Augen
   // und Brille -> die Bilder beider Phasen passen zusammen.
-  softLight(px - W() / 6, py - H() / 6, W() / 3, H() / 3, 0.8);
+  const cw = W() / CONFIG.gridCols, ch = H() / CONFIG.gridRows;
+  softLight(px - cw / 2, py - ch / 2, cw, ch, 0.8);
   sctx.beginPath(); sctx.arc(px, py, r + 10, 0, 2 * Math.PI);
   sctx.fillStyle = "rgba(255,60,60,0.18)"; sctx.fill();
   sctx.beginPath(); sctx.arc(px, py, r, 0, 2 * Math.PI);
@@ -315,6 +326,7 @@ async function runCalibration() {
  *    (wie die Offset-Kalibrierung von Chen & Shi im Stand der Technik).
  * Ob die Korrektur hilft, wird fair geprüft: Für jeden Punkt wird der Versatz nur
  * aus den ANDEREN vier Punkten geschätzt (Kreuzvalidierung). */
+const TEST_MS = 3000;                     // so lange wird jeder Testpunkt gezeigt
 const TEST_POINTS = [[0.5, 0.5], [0.15, 0.15], [0.85, 0.15], [0.85, 0.85], [0.15, 0.85]];
 const ediag = (pairs) => 100 * Math.sqrt(pairs.reduce((s, [p, t]) =>
   s + (p[0] - t[0]) ** 2 + (p[1] - t[1]) ** 2, 0) / Math.max(1, pairs.length)) / Math.SQRT2;
@@ -327,19 +339,22 @@ async function runAccuracyTest() {
     let running = true;
     const anim = () => {
       if (!running) return;
-      const el = (performance.now() - t0) / 2400;
+      const el = (performance.now() - t0) / TEST_MS;
       drawGrid(); drawDot(tx, ty, el * 8);
       sctx.strokeStyle = "rgba(255,255,255,0.5)"; sctx.lineWidth = 2;
       sctx.beginPath(); sctx.arc(tx * W(), ty * H(), 34, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * (1 - el)); sctx.stroke();
       requestAnimationFrame(anim);
     };
     requestAnimationFrame(anim);
-    while (performance.now() - t0 < 2400) {
+    while (performance.now() - t0 < TEST_MS) {
       const image = await grabFrame();
       if (!image) { await sleep(100); continue; }
       try {
-        const r = await api("/api/predict", { sid: state.sid, image });
-        if (performance.now() - t0 > 800 && r.personal) preds.push(r.personal);
+        // Erst ehrlich vorhersagen, dann merkt sich der Server das Bild mit Ziel
+        // (keep) für das Nachtraining. Die ersten 0,8 s zählen nicht (Blick springt noch).
+        const keep = performance.now() - t0 > 800;
+        const r = await api("/api/test_frame", { sid: state.sid, image, x: tx, y: ty, keep });
+        if (keep && r.personal) preds.push(r.personal);
       } catch (e) { await sleep(200); }
     }
     running = false;
@@ -359,6 +374,13 @@ async function runAccuracyTest() {
   state.bias = state.bias.map((b) => Math.max(-0.15, Math.min(0.15, b)));   // höchstens 15 %
   state.testPoints = used.map((p) => ({ target: p.t, preds: p.preds }));
   state.test.applied = state.bias[0] !== 0 || state.bias[1] !== 0;
+  // Nachtraining: Ridge mit Kalibrier- UND Testbildern neu rechnen. Danach ist die
+  // Offset-Korrektur nicht mehr nötig (der Versatz steckt schon im neuen Modell).
+  try {
+    const rf = await api("/api/refit", { sid: state.sid });
+    state.test.refit = !!rf.refit;
+    if (rf.refit) { state.bias = [0, 0]; state.test.applied = false; }
+  } catch (e) { state.test.refit = false; }
   $("stage-hud").innerHTML = "";
 }
 
@@ -384,7 +406,8 @@ function showResult() {
   const t = state.test || {};
   $("result-test").innerHTML = t.raw == null ? "" :
     `<b>Test mit 5 Punkten</b> (nicht im Training): Fehler <b>${t.raw.toFixed(1)} %</b>` +
-    (t.applied ? ` → <b>${t.corrected.toFixed(1)} %</b> mit Offset-Korrektur (wird bei der Verfolgung verwendet)`
+    (t.refit ? ". Die Testbilder wurden danach <b>zusätzlich ins Training übernommen</b> (Nachtraining)"
+     : t.applied ? ` → <b>${t.corrected.toFixed(1)} %</b> mit Offset-Korrektur (wird bei der Verfolgung verwendet)`
                : " (eine Offset-Korrektur würde nicht helfen)") + `. ${t.n} Messungen.`;
   $("result-diag").textContent =
     `Diagnose: Trainingsfehler ${c.train_before} % → ${c.train_last_epoch} % (letzte Epoche), ` +
@@ -392,7 +415,8 @@ function showResult() {
     `Kamera ${grab.width}×${grab.height} (${camLabel}), ` +
     `Ausschnitt: ${c.crop}` + (c.face_box ? ` (${c.face_box.join(",")})` : "") + ". " +
     (c.method ? `Verfahren: ${{ mlp: "MLP-Kopf", ridge: "Ridge (global)", spatial: "Ridge (räumlich)" }[c.method]} ` +
-      `(MLP ${c.error_mlp} %, Ridge global ${c.error_ridge} %, Ridge räumlich ${c.error_spatial} %).` : "");
+      `(MLP ${c.error_mlp} %, Ridge global ${c.error_ridge} %, Ridge räumlich ${c.error_spatial} %). ` +
+      `Gewicht Kopfposition: ${c.head_weight_spatial ?? "–"} (räumlich), ${c.head_weight_ridge ?? "–"} (global).` : "");
   show("result");
 }
 
@@ -406,7 +430,7 @@ function currentErr() {
 const smooth = { px: null, py: null, bx: null, by: null };
 const recent = [];                                // letzte Rohwerte für den Median-Filter
 function filtered(p) {
-  recent.push(p); if (recent.length > 5) recent.shift();
+  recent.push(p); if (recent.length > CONFIG.medianWindow) recent.shift();
   const med = (k) => { const s = recent.map((q) => q[k]).sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
   const b = state.bias || [0, 0];
   return [Math.min(1, Math.max(0, med(0) - b[0])), Math.min(1, Math.max(0, med(1) - b[1]))];
@@ -438,17 +462,20 @@ function softLight(x0, y0, w, h, intensity) {
   sctx.restore();
 }
 
-/** Bühnenlicht: Das Feld (3 x 3), in dem der Blick liegt, wird langsam hell,
- *  die anderen Felder werden langsam dunkel. */
+/** Bühnenlicht: Das Feld (Standard 7 x 5), in dem der Blick liegt, wird schnell hell,
+ *  die Nachbarfelder leuchten schwach mit, die anderen werden dunkel. */
 function stageLights(x, y) {
-  const cur = regionOf(x, y), w = W() / 3, h = H() / 3;
-  for (let k = 0; k < 9; k++) {
-    cellLight[k] += ((k === cur ? 1 : 0) - cellLight[k]) * 0.12;
-    softLight((k % 3) * w, Math.floor(k / 3) * h, w, h, cellLight[k]);
+  const C = CONFIG.gridCols, R = CONFIG.gridRows, w = W() / C, h = H() / R;
+  const cur = cellOf(x, y), cc = cur % C, cr = Math.floor(cur / C);
+  for (let k = 0; k < NCELLS; k++) {
+    const d = Math.max(Math.abs((k % C) - cc), Math.abs(Math.floor(k / C) - cr));
+    const goal = d === 0 ? 1 : d === 1 ? 0.18 : 0;           // Nachbarn leicht mit beleuchten
+    cellLight[k] += (goal - cellLight[k]) * 0.3;
+    softLight((k % C) * w, Math.floor(k / C) * h, w, h, cellLight[k]);
   }
   sctx.fillStyle = `rgba(255,235,200,${0.35 + 0.5 * cellLight[cur]})`;
-  sctx.font = "600 20px Segoe UI, sans-serif";
-  sctx.fillText(REGIONS[cur], (cur % 3) * w + 24, Math.floor(cur / 3) * h + 40);
+  sctx.font = "600 16px Segoe UI, sans-serif";
+  sctx.fillText(REGIONS[regionOf(x, y)], cc * w + 12, cr * h + 26);
 }
 
 /** Scheinwerfer: Rechteck-Licht folgt dem Blick; Größe = gemessene Unsicherheit. */
@@ -462,10 +489,14 @@ function drawTracking() {
   if (!state.tracking) return;
   sctx.fillStyle = "#04060b";                             // dunkle Bühne
   sctx.fillRect(0, 0, W(), H());
-  sctx.strokeStyle = "rgba(255,255,255,0.04)"; sctx.lineWidth = 1;
-  for (let i = 1; i < 3; i++) {
-    sctx.beginPath(); sctx.moveTo((W() * i) / 3, 0); sctx.lineTo((W() * i) / 3, H()); sctx.stroke();
-    sctx.beginPath(); sctx.moveTo(0, (H() * i) / 3); sctx.lineTo(W(), (H() * i) / 3); sctx.stroke();
+  sctx.strokeStyle = "rgba(255,255,255,0.05)"; sctx.lineWidth = 1;
+  for (let i = 1; i < CONFIG.gridCols; i++) {
+    const x = (W() * i) / CONFIG.gridCols;
+    sctx.beginPath(); sctx.moveTo(x, 0); sctx.lineTo(x, H()); sctx.stroke();
+  }
+  for (let i = 1; i < CONFIG.gridRows; i++) {
+    const y = (H() * i) / CONFIG.gridRows;
+    sctx.beginPath(); sctx.moveTo(0, y); sctx.lineTo(W(), y); sctx.stroke();
   }
   const a = CONFIG.smoothing;
   const lerp = (o, n) => (o === null ? n : o + a * (n - o));
@@ -514,9 +545,13 @@ async function runTracking() {
   requestAnimationFrame(drawTracking);
   const t0 = performance.now() - (state.track.length ? state.track[state.track.length - 1].t * 1000 : 0);
 
-  while (state.tracking) {                                 // immer nur eine Anfrage gleichzeitig
+  // Immer nur eine Anfrage gleichzeitig. Das nächste Kamerabild wird schon geholt,
+  // während der Server noch rechnet (weniger Verzögerung).
+  let next = grabFrame();
+  while (state.tracking) {
     try {
-      const image = await grabFrame();
+      const image = await next;
+      next = grabFrame();
       if (!image) { await sleep(200); continue; }
       const r = await api("/api/predict", { sid: state.sid, image });
       latest.base = r.base;
@@ -593,7 +628,14 @@ function drawHeatmap(canvas, points, title) {
   tmp.getContext("2d").putImageData(img, 0, 0);
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";             // feine Felder (7 x 5)
+  for (let i = 1; i < CONFIG.gridCols; i++) {
+    ctx.beginPath(); ctx.moveTo((canvas.width * i) / CONFIG.gridCols, 0); ctx.lineTo((canvas.width * i) / CONFIG.gridCols, canvas.height); ctx.stroke();
+  }
+  for (let i = 1; i < CONFIG.gridRows; i++) {
+    ctx.beginPath(); ctx.moveTo(0, (canvas.height * i) / CONFIG.gridRows); ctx.lineTo(canvas.width, (canvas.height * i) / CONFIG.gridRows); ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";             // grobe Bereiche (3 x 3)
   for (let i = 1; i < 3; i++) {
     ctx.beginPath(); ctx.moveTo((canvas.width * i) / 3, 0); ctx.lineTo((canvas.width * i) / 3, canvas.height); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, (canvas.height * i) / 3); ctx.lineTo(canvas.width, (canvas.height * i) / 3); ctx.stroke();
@@ -675,7 +717,7 @@ function timeTable(track) {
     const x = med(pts.map((p) => p.px)), y = med(pts.map((p) => p.py));
     const count = new Array(9).fill(0); pts.forEach((p) => count[regionOf(p.px, p.py)]++);
     const reg = count.indexOf(Math.max(...count));
-    rows.push({ from: a, to: Math.min(a + win, T), x, y, region: REGIONS[reg],
+    rows.push({ from: a, to: Math.min(a + win, T), x, y, region: REGIONS[reg], cell: cellName(cellOf(x, y)),
       share: (100 * count[reg]) / pts.length, n: pts.length });
   }
   return rows;
@@ -704,9 +746,9 @@ function showAnalysis() {
   drawTimeline($("timeline"), tr);
   drawPositionChart($("position-chart"), tr);
   state.timeRows = timeTable(tr);
-  $("time-table").innerHTML = "<table><tr><th>Zeitraum</th><th>Bereich</th>" +
+  $("time-table").innerHTML = "<table><tr><th>Zeitraum</th><th>Bereich</th><th>Feld</th>" +
     "<th class='num'>x (% Breite)</th><th class='num'>y (% Höhe)</th><th class='num'>sicher</th></tr>" +
-    state.timeRows.map((r) => `<tr><td>${r.from.toFixed(0)}–${r.to.toFixed(0)} s</td><td>${r.region}</td>` +
+    state.timeRows.map((r) => `<tr><td>${r.from.toFixed(0)}–${r.to.toFixed(0)} s</td><td>${r.region}</td><td>${r.cell}</td>` +
       `<td class="num">${(100 * r.x).toFixed(0)}</td><td class="num">${(100 * r.y).toFixed(0)}</td>` +
       `<td class="num">${r.share.toFixed(0)} %</td></tr>`).join("") + "</table>";
   const after = regionShares(tr, "p"), before = regionShares(tr, "b");
@@ -767,9 +809,9 @@ $("btn-new").onclick = () => { state.track = []; runCalibration(); };
 $("btn-png").onclick = exportPng;
 $("btn-csv").onclick = exportCsv;
 $("btn-csv-time").onclick = () => {
-  const lines = ["von_s,bis_s,bereich,x_prozent_breite,y_prozent_hoehe,anteil_im_bereich_prozent,messpunkte"];
+  const lines = ["von_s,bis_s,bereich,feld,x_prozent_breite,y_prozent_hoehe,anteil_im_bereich_prozent,messpunkte"];
   for (const r of state.timeRows || []) {
-    lines.push([r.from.toFixed(1), r.to.toFixed(1), `"${r.region}"`, (100 * r.x).toFixed(1),
+    lines.push([r.from.toFixed(1), r.to.toFixed(1), `"${r.region}"`, r.cell, (100 * r.x).toFixed(1),
       (100 * r.y).toFixed(1), r.share.toFixed(0), r.n].join(","));
   }
   download("blick_zeittabelle.csv", URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })));

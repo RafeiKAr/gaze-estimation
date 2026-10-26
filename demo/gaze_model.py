@@ -83,6 +83,7 @@ SKIP_START_SEC = 0.5      # erste 0,5 s verwerfen (Blick ist noch nicht auf dem 
 N_BLOCKS = 10             # Kalibrierung in 10 zeitliche Blöcke teilen ...
 VAL_EVERY = 5             # ... jeder 5. Block (2 von 10 = 20 %) ist Prüfung
 GAP_FRAMES = 3            # Lücke zwischen Trainings- und Prüfblöcken
+HEAD_WEIGHTS = (0.0, 0.1, 0.3, 1.0)   # Gewicht der Kopfposition in der Ridge-Regression
 
 # ---------------------------------------------------------------- Gesichtsdetektor
 try:
@@ -135,34 +136,57 @@ def apply_crop(image, box, square=False):
 
 
 # ---------------------------------------------------------------- Modell
-def fit_ridge(feats, Y, tr, va):
+def fit_ridge(feats, Y, tr, va, head=None, factors=RIDGE_FACTORS, head_weights=HEAD_WEIGHTS):
     """Ridge-Regression in dualer Form (geeignet für viele Merkmale, wenige Bilder).
-    Gibt (Modell, Prüffehler, Faktor) zurück; die Stärke wird auf der Prüfung gewählt."""
+
+    head: optional Kopfposition je Bild (Mitte x, Mitte y, Größe des Gesichts im
+    Kamerabild). Der Augenausschnitt folgt dem Kopf – ohne diese drei Zahlen „weiß“
+    das Modell nicht, ob sich der Kopf bewegt hat. Wie stark sie zählen (Gewicht c),
+    wird wie die Regularisierung auf der Prüfung gewählt (c = 0: nicht benutzen).
+    Gibt (Modell, Prüffehler, Faktor) zurück; das Modell ist ein dict."""
     Fm, Yn = np.asarray(feats, np.float64), np.asarray(Y, np.float64)
     mu, sd = Fm[tr].mean(0), Fm[tr].std(0) + 1e-6
     Z = (Fm - mu) / sd
     ym = Yn[tr].mean(0)
-    K = Z[tr] @ Z[tr].T
-    scale = np.trace(K) / len(tr)
+    K0 = Z[tr] @ Z[tr].T
+    scale = np.trace(K0) / len(tr)
+    if head is None:
+        Hm, head_weights = np.zeros((len(Fm), 1)), (0.0,)
+    else:
+        Hm = np.asarray(head, np.float64)
+    # Mindest-Streuung 1 % des Kamerabildes: Bewegt sich der Kopf bei der Kalibrierung
+    # kaum, würde sonst schon eine kleine Bewegung später als "riesig" gelten.
+    hmu, hsd = Hm[tr].mean(0), np.maximum(Hm[tr].std(0), 0.01)
+    Zh0 = (Hm - hmu) / hsd
+    hbase = np.sqrt(Z.shape[1] / Zh0.shape[1])       # gleiche Größenordnung wie die Bildmerkmale
     best, results = (None, float("inf"), None), []
-    for f in RIDGE_FACTORS:
-        A = np.linalg.solve(K + f * scale * np.eye(len(tr)), Yn[tr] - ym)
-        W = Z[tr].T @ A
-        e = diagonal_error_pct(Yn[va], np.clip(Z[va] @ W + ym, 0, 1))
-        results.append(((mu, sd, W, ym), e, f))
-        if e < best[1]:
-            best = ((mu, sd, W, ym), e, f)
-    # Robuster wählen: die STÄRKSTE Regularisierung, die höchstens 5 % schlechter ist
-    # als die beste. Sie extrapoliert weniger, wenn sich die Bilder bei der Verfolgung
-    # etwas von der Kalibrierung unterscheiden (Licht, Kopfhaltung).
+    for c in head_weights:
+        Zh = Zh0 * c * hbase
+        K = K0 + Zh[tr] @ Zh[tr].T
+        for f in factors:
+            A = np.linalg.solve(K + f * scale * np.eye(len(tr)), Yn[tr] - ym)
+            model = {"mu": mu, "sd": sd, "W": Z[tr].T @ A, "ym": ym, "f": f, "c": c,
+                     "hmu": hmu, "hsd": hsd, "hs": c * hbase, "Wh": Zh[tr].T @ A}
+            e = diagonal_error_pct(Yn[va], np.clip(Z[va] @ model["W"] + Zh[va] @ model["Wh"] + ym, 0, 1))
+            results.append((model, e, f))
+            if e < best[1]:
+                best = (model, e, f)
+    # Robuster wählen: unter allen Varianten, die höchstens 5 % schlechter sind als die
+    # beste, die STÄRKSTE Regularisierung (und dann das kleinste Kopfgewicht). Sie
+    # extrapoliert weniger, wenn sich die Bilder bei der Verfolgung etwas von der
+    # Kalibrierung unterscheiden (Licht, Kopfhaltung).
     ok = [r for r in results if r[1] <= best[1] * 1.05]
-    return max(ok, key=lambda r: r[2])
+    return max(ok, key=lambda r: (r[2], -r[0]["c"]))
 
 
-def ridge_predict(model, feat):
-    mu, sd, W, ym = model
-    z = (np.asarray(feat, np.float64) - mu) / sd
-    return np.clip(z @ W + ym, 0, 1).tolist()
+def ridge_predict(model, feat, head=None):
+    z = (np.asarray(feat, np.float64) - model["mu"]) / model["sd"]
+    y = z @ model["W"] + model["ym"]
+    if head is not None and model["c"] > 0:
+        zh = (np.asarray(head, np.float64) - model["hmu"]) / model["hsd"]
+        zh = np.clip(zh, -2.5, 2.5) * model["hs"]       # nicht weit über die Kalibrierung hinaus
+        y = y + zh @ model["Wh"]
+    return np.clip(y, 0, 1).tolist()
 
 
 def build_head():
@@ -258,6 +282,9 @@ class Session:
         self.face_tries = 0
         self.n_pred = 0
         self.last_base = [0.5, 0.5]
+        self.cur_head = [0.5, 0.5, 0.0]         # Kopfposition im Kamerabild (x, y, Größe)
+        self.heads = []                         # ... für jedes Kalibrierbild
+        self.extra = []                         # Testbilder mit Ziel (feat, spat, head, x, y)
         self.lock = threading.Lock()
 
     def prepare(self, image):
@@ -276,6 +303,8 @@ class Session:
             if face is not None:                          # neue Position, feste Größe
                 fw, fh = self.face_size
                 cx, cy = face[0] + face[2] / 2, face[1] + face[3] / 2
+                W_, H_ = image.size
+                self.cur_head = [cx / W_, cy / H_, face[2] / W_]
                 self.box = crop_box((cx - fw / 2, cy - fh / 2, fw, fh), image.size, self.crop_mode)
             box = self.box
         return apply_crop(image, box, square=self.crop_mode == "face")
@@ -295,6 +324,7 @@ class Session:
             return False                                  # noch kein Gesicht gefunden
         with self.lock:
             idx = len(self.feats)
+            head = list(self.cur_head)
         feat, spat = self.features(part)
         base = None
         if self.crop_mode == "none":
@@ -307,6 +337,7 @@ class Session:
         with self.lock:
             self.feats.append(feat)
             self.spatial.append(spat)
+            self.heads.append(head)
             self.targets.append([float(x), float(y)])
             self.times.append(float(t))
             self.base_preds.append(base)
@@ -378,8 +409,10 @@ class Session:
 
         # Ridge-Regression auf den globalen und auf den räumlichen Merkmalen
         S = torch.stack([self.spatial[i] for i in order]).numpy()
-        ridge, ridge_err, ridge_alpha = fit_ridge(X.numpy(), Y.numpy(), tr, va)
-        sridge, sridge_err, sridge_alpha = fit_ridge(S, Y.numpy(), tr, va)
+        Hd = np.array([self.heads[i] for i in order]) if self.crop_mode != "none" else None
+        ridge, ridge_err, ridge_alpha = fit_ridge(X.numpy(), Y.numpy(), tr, va, head=Hd)
+        sridge, sridge_err, sridge_alpha = fit_ridge(S, Y.numpy(), tr, va, head=Hd)
+        self.extra = []                                     # neue Kalibrierung: alte Testbilder weg
 
         errors = {"mlp": mlp_err, "ridge": ridge_err, "spatial": sridge_err}
         self.method = min(errors, key=errors.get)            # bestes Verfahren auf der Prüfung
@@ -401,6 +434,7 @@ class Session:
             "error_ridge": round(ridge_err, 2), "ridge_alpha": ridge_alpha,
             "error_spatial": round(sridge_err, 2), "spatial_alpha": sridge_alpha,
             "spatial_dims": int(S.shape[1]),
+            "head_weight_ridge": ridge["c"], "head_weight_spatial": sridge["c"],
         }
         if DEBUG_DIR is not None and split is None:
             DEBUG_DIR.mkdir(exist_ok=True)
@@ -420,13 +454,51 @@ class Session:
                 self.last_base = self.gm.base_predict(image)
             base = self.last_base
         self.n_pred += 1
-        return base, self.predict_personal(feat, spat)
+        self.last_head = list(self.cur_head)
+        return base, self.predict_personal(feat, spat, self.cur_head)
 
-    def predict_personal(self, feat, spat):
+    def predict_personal(self, feat, spat, head=None):
         if self.head is None:
             return None
         if self.method == "spatial":
-            return ridge_predict(self.sridge, spat.numpy())
+            return ridge_predict(self.sridge, spat.numpy(), head)
         if self.method == "ridge":
-            return ridge_predict(self.ridge, feat.numpy())
+            return ridge_predict(self.ridge, feat.numpy(), head)
         return self.gm.predict(feat, self.head)
+
+    def test_frame(self, image, x, y, keep):
+        """Bild aus dem 5-Punkte-Test: erst vorhersagen (ehrlicher Test), dann mit dem
+        bekannten Ziel für das Nachtraining (refit) merken."""
+        self.last_used = time.time()
+        part = self.prepare(image)
+        feat, spat = self.features(part)
+        head = list(self.cur_head)
+        pred = self.predict_personal(feat, spat, head)
+        if keep:
+            with self.lock:
+                self.extra.append((feat, spat, head, float(x), float(y)))
+        return pred
+
+    def refit(self):
+        """Ridge noch einmal mit Kalibrier- UND Testbildern rechnen (gleiche Einstellungen).
+        Die Testbilder zeigen die Augen kurz vor der Verfolgung – also genau unter den
+        Bedingungen (Kopfhaltung, Licht), in denen danach gemessen wird."""
+        if self.method not in ("ridge", "spatial") or len(self.extra) < 10:
+            return {"refit": False, "extra": len(self.extra)}
+        with self.lock:
+            extra = list(self.extra)
+        # Testbilder 3-fach gewichten: es sind wenige, aber sie sind die aktuellsten
+        feats = list(self.feats) + [e[0] for e in extra] * 3
+        spats = list(self.spatial) + [e[1] for e in extra] * 3
+        heads = list(self.heads) + [e[2] for e in extra] * 3
+        Y = np.array(list(self.targets) + [[e[3], e[4]] for e in extra] * 3)
+        idx = np.arange(len(Y))
+        Hd = np.array(heads) if self.crop_mode != "none" else None
+        old = self.sridge if self.method == "spatial" else self.ridge
+        F_ = torch.stack(spats if self.method == "spatial" else feats).numpy()
+        model, _, _ = fit_ridge(F_, Y, idx, idx, head=Hd, factors=(old["f"],), head_weights=(old["c"],))
+        if self.method == "spatial":
+            self.sridge = model
+        else:
+            self.ridge = model
+        return {"refit": True, "extra": len(extra)}
