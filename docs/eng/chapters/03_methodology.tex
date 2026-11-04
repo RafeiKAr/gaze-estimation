@@ -18,30 +18,27 @@ The thesis uses two data sources:
   \item \textbf{GazeCapture}~\cite{krafka2016itracker} for the base models. The
         full dataset has \num{2445504} frames of \num{1474} persons. This
         thesis uses a publicly available subset from
-        Kaggle~\cite{kaggle_gazecapture}. The script \code{main.py} downloads
-        it and reads, for every person, the files \code{frames.json} (frame
-        names) and \code{dotInfo.json} (position of the dot on the screen,
-        \code{XPts}/\code{YPts}). Persons with missing files or with different
-        numbers of frames and labels are skipped. This gives \num{347085}
-        labelled frames of 262 persons on iPhones and iPads
-        (\code{labels.csv}). There are two splits, each 80/20:
+        Kaggle~\cite{kaggle_gazecapture}. For every person, the frames and the
+        corresponding target points on the screen are read from the metadata.
+        Persons with incomplete metadata are skipped. This gives \num{347085}
+        labelled frames of 262 persons on iPhones and iPads. There are two splits, each 80/20:
         \code{norm\_subject} (\SI{80}{\percent} of the persons in training,
         \SI{20}{\percent} in test; no person in both) and \code{norm\_random} (random by
         groups of person and target point; the same person can appear in
         training and test). For the experiments, \num{1000} training and
         \num{200} test frames are drawn at random, plus 200 validation frames
         of a further person.
-  \item \textbf{Own recordings} for personalization. One person (the author)
-        recorded 27 calibration sessions with two laptop webcams. 18 of them are
-        evaluated (\cref{sec:meth_aufnahme}).
+  \item \textbf{Own recordings} for personalization. Person~A (the author)
+        recorded 27 calibration sessions with two laptop webcams; 18 of them are
+        evaluated. For comparison, a second person (person~B) recorded two
+        sessions (\cref{sec:meth_aufnahme}).
 \end{itemize}
 
 \section{Recording the Personalization Data}
 \label{sec:meth_aufnahme}
 A recording program shows a red point on the screen, and the person follows it
 with the eyes. At the same time, the webcam records images. For each image, the
-position of the point is stored, with 6 labels per second. The labels are in the
-file \code{norm\_labels.csv} of each session; the positions are already
+position of the point is stored, with 6 labels per second. The positions are directly
 normalized to $[0,1]^2$. Three generations of the program are used:
 \begin{itemize}
   \item \textbf{Gen~1} (sessions 01--04): the point moves smoothly and without
@@ -65,6 +62,15 @@ sessions 05--09 and 19--24. For session 04 the device was not logged. On both de
 frames are stored at \num{640}~$\times$~\num{480} pixels.
 \Cref{tab:session_conditions} shows all conditions.
 
+For comparison, a second person (person~B) recorded two sessions with Gen~4
+(\SI{120}{\second}, \SI{90}{\percent} corners, without glasses, bright):
+session~28 with device~A in front of a calm white background and session~29 with
+device~B in front of a busy background with a window. Session~28 uses a slightly
+smaller screen area (\num{1390}~$\times$~\num{880} pixels); the normalization
+to $[0,1]^2$ compensates for this. The sessions of person~B are evaluated
+separately (\cref{sec:person_b}) and are not part of the means over the 18
+sessions of person~A.
+
 \section{Pre-Processing}
 \label{sec:meth_vorverarbeitung}
 \begin{itemize}
@@ -76,8 +82,8 @@ frames are stored at \num{640}~$\times$~\num{480} pixels.
         $224\times224$ pixels and normalized with the ImageNet means and
         standard deviations. There is no face or eye crop.
   \item \textbf{Cleaned labels:} for Gen~4, the \code{WAIT} frames can be
-        removed. The script \code{session\_design.py --write-clean} writes the
-        file \code{norm\_labels\_clean.csv} for this.
+        removed, because the phase of every frame is logged
+        (\cref{sec:cleaning}).
 \end{itemize}
 
 \section{Model and Training}
@@ -85,26 +91,24 @@ frames are stored at \num{640}~$\times$~\num{480} pixels.
 The model has two parts:
 \begin{enumerate}
   \item a \textbf{ResNet-18}~\cite{he2016resnet}, pretrained on ImageNet
-        (\code{ResNet18\_Weights.DEFAULT}), as feature extractor. It gives
+        as feature extractor. It gives
         512 features per image.
   \item a \textbf{regression head}: an MLP of four fully connected layers
         $512 \to 512 \to 256 \to 128 \to 2$ with ReLU, dropout $p=0.2$ after
         the second layer and an output activation (default: sigmoid). It
         computes the position $(x,y)$ from the features.
 \end{enumerate}
-Training uses L1 loss (\code{nn.L1Loss}), AdamW (learning rate $10^{-4}$,
+Training uses L1 loss, AdamW (learning rate $10^{-4}$,
 weight decay $10^{-5}$), batch size 32 and early stopping (stop after three
 epochs without improvement, at most 500 epochs). The procedure has two stages:
 \begin{enumerate}
-  \item \textbf{Base model (E0):} the head is trained on GazeCapture
-        (\code{train\_base.py}). Of five seeds, the run with the lowest
+  \item \textbf{Base model (E0):} the head is trained on GazeCapture. Of five seeds, the run with the lowest
         validation error is kept.
   \item \textbf{Personalization (E1--E3):} the head of the base model is trained
-        further with the frames of one own session (\code{personal\_exp.py}).
+        further with the frames of one own session.
         The backbone stays frozen, including the BatchNorm statistics.
 \end{enumerate}
-Because the backbone is frozen, its features are computed only once and stored
-(feature cache). After that, only the head is trained. A run therefore takes
+Because the backbone is frozen, its features are computed only once and stored. After that, only the head is trained. A run therefore takes
 only seconds.
 
 \section{Evaluation}
@@ -124,38 +128,26 @@ only seconds.
         one session, test on another) (\cref{sec:loading}).
   \item \textbf{Spatial analysis:} errors in the centre, at the edges and in the
         corners of the screen (\cref{sec:partition}).
+  \item \textbf{Temporal smoothing (E4):} a moving average over the last $k$
+        predictions is applied afterwards to the stored test predictions.
+        Accuracy ($\Ediag$) and stability (RMS-S2S) are measured
+        (\cref{sec:smoothing}).
 \end{itemize}
 
 \section{Implementation}
 \label{sec:meth_implementierung}
-The code is written in Python with PyTorch and torchvision. The most important
-parts are:
-\begin{itemize}[nosep]
-  \item \code{main.py}: loads GazeCapture, normalizes the targets and creates
-        the splits;
-  \item \code{model.py}, \code{dataset.py}: model, losses, training, data
-        loading and feature cache;
-  \item \code{metrics.py}: diagonal error and baselines (one single source for
-        all scripts);
-  \item \code{exp.py}: hyperparameter study with five repeats;
-  \item \code{train\_base.py}, \code{personal\_exp.py}: base models and
-        personalization (E0--E3);
-  \item \code{session\_design.py}: coverage, transition frames and cleaned
-        labels;
-  \item \code{spatial\_analysis.py}, \code{plot\_targets.py}: figures;
-  \item \code{auswertung.py}: creates the tables from the result files;
-  \item notebook \code{notebooks/Masterarbeit.ipynb}: runs all experiments and creates tables
-        and figures.
-\end{itemize}
+The code is written in Python with PyTorch and torchvision. A short overview of
+the code structure and the commands to repeat the experiments are given in the
+appendix (\cref{sec:anhang_code,sec:anhang_befehle}).
 All experiments run without a GPU on the CPU of the HP laptop
 (device~B): AMD Ryzen~7 3700U, about \SI{13}{\giga\byte} usable memory,
 Ubuntu~26.04.1~LTS, Python~3.12.3, PyTorch~2.12.1 and torchvision~0.27.1
-(CPU versions). The commands to repeat the experiments are given
-in the appendix (\cref{sec:anhang_befehle}). The code and the web demo are
-available on GitHub: \url{https://github.com/RafeiKAr/gaze-estimation}. A copy
+(CPU versions). The code and the web demo are
+available on GitHub: \url{https://github.com/RafeiKAr/gaze-estimation}. The base model of the demo is
+available on Hugging Face: \url{https://huggingface.co/RafeiKAr/demo_model}. A copy
 is stored in the BHT cloud:
 \url{https://cloud.bht-berlin.de/index.php/s/P4GkQ9J8zWHbdf9}. The frames
-and videos of the own recordings show the author's face. They are therefore not
+and videos of the own recordings show the faces of the two persons. They are therefore not
 public, but stored in a private dataset on Hugging Face.
 
 

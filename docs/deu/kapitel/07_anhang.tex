@@ -5,6 +5,31 @@
 \chapter{Anhang}
 \label{ch:anhang}
 
+\section{Aufbau des Codes}
+\label{sec:anhang_code}
+Der Code ist in Python mit PyTorch und torchvision geschrieben. Die wichtigsten
+Teile sind:
+\begin{itemize}[nosep]
+  \item \code{main.py}: lädt GazeCapture, normiert die Ziele und erstellt die
+        Splits;
+  \item \code{model.py}, \code{dataset.py}: Modell, Losses, Training,
+        Laden der Daten und gespeicherte Features;
+  \item \code{metrics.py}: Diagonalfehler und Baselines (eine einzige Quelle
+        für alle Skripte);
+  \item \code{exp.py}: Hyperparameterstudie mit fünf Wiederholungen;
+  \item \code{train\_base.py}, \code{personal\_exp.py}: Basismodelle und
+        Personalisierung (E0--E3);
+  \item \code{moving\_average.py}: zeitliche Glättung der gespeicherten
+        Vorhersagen (E4);
+  \item \code{session\_design.py}: Abdeckung, Transition Frames und bereinigte
+        Labels;
+  \item \code{spatial\_analysis.py}, \code{plot\_targets.py}: Abbildungen;
+  \item \code{auswertung.py}: erstellt die Tabellen aus den Ergebnisdateien;
+  \item Notebook \code{notebooks/Masterarbeit.ipynb}: führt alle Experimente
+        aus und erstellt Tabellen und Abbildungen;
+  \item \code{demo/}: Web-Demo (Server und Browser-Oberfläche).
+\end{itemize}
+
 \section{Befehle zum Wiederholen der Experimente}
 \label{sec:anhang_befehle}
 Alle Befehle werden im Hauptordner des Projekts ausgeführt (siehe auch
@@ -39,6 +64,11 @@ python personal_exp.py --sessions 21 22 --split sequential --seeds 42 43 44
 python personal_exp.py --split two_videos --pairs 21:22,22:21 --seeds 42 43 44
 python personal_exp.py --sessions all --split sequential
 python personal_exp.py --summary
+\end{verbatim}
+
+\paragraph{Zeitliche Glättung (E4).}
+\begin{verbatim}
+python moving_average.py
 \end{verbatim}
 
 \paragraph{Gestaltung der Sitzungen und bereinigte Labels.}

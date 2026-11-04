@@ -18,22 +18,21 @@ Die Arbeit nutzt zwei Datenquellen:
   \item \textbf{GazeCapture}~\cite{krafka2016itracker} für die Basismodelle.
         Der vollständige Datensatz hat \num{2445504} Bilder von \num{1474}
         Personen. Verwendet wird eine öffentlich verfügbare Teilmenge von
-        Kaggle~\cite{kaggle_gazecapture}. Das Skript \code{main.py} lädt sie
-        herunter und liest für jede Person die Dateien \code{frames.json}
-        (Bildnamen) und \code{dotInfo.json} (Position des Punktes auf dem
-        Bildschirm, \code{XPts}/\code{YPts}). Personen mit fehlenden Dateien
-        oder ungleich vielen Bildern und Labels werden übersprungen. So
-        entstehen \num{347085} gelabelte Bilder von 262 Personen auf iPhones
-        und iPads (\code{labels.csv}). Es gibt zwei Splits, jeweils 80/20:
+        Kaggle~\cite{kaggle_gazecapture}. Für jede Person werden die Bilder
+        und die zugehörigen Zielpunkte auf dem Bildschirm aus den Metadaten
+        gelesen. Personen mit unvollständigen Metadaten werden übersprungen.
+        So entstehen \num{347085} gelabelte Bilder von 262 Personen auf
+        iPhones und iPads. Es gibt zwei Splits, jeweils 80/20:
         \code{norm\_subject} (\SI{80}{\percent} der Personen im Training,
         \SI{20}{\percent} im Test; keine Person in beiden) und
         \code{norm\_random} (zufällig nach Gruppen aus Person und Zielpunkt;
         dieselbe Person kann in Training und Test vorkommen). Für die Experimente
         werden \num{1000} Trainings- und \num{200} Testbilder zufällig gezogen,
         dazu 200 Validierungsbilder einer weiteren Person.
-  \item \textbf{Eigene Aufnahmen} für die Personalisierung. Eine Person (der
-        Autor) hat 27 Kalibriersitzungen mit zwei Laptop-Webcams aufgenommen.
-        18 davon werden ausgewertet (\cref{sec:meth_aufnahme}).
+  \item \textbf{Eigene Aufnahmen} für die Personalisierung. Person~A (der
+        Autor) hat 27 Kalibriersitzungen mit zwei Laptop-Webcams aufgenommen;
+        18 davon werden ausgewertet. Zum Vergleich hat eine zweite Person
+        (Person~B) zwei Sitzungen aufgenommen (\cref{sec:meth_aufnahme}).
 \end{itemize}
 
 \section{Aufnahme der Personalisierungsdaten}
@@ -41,8 +40,7 @@ Die Arbeit nutzt zwei Datenquellen:
 Ein Aufnahmeprogramm zeigt einen roten Punkt auf dem Bildschirm, und die
 Person folgt ihm mit den Augen. Gleichzeitig nimmt die Webcam Bilder auf. Zu
 jedem Bild wird die Position des Punktes gespeichert, und zwar 6 Labels pro
-Sekunde. Die Labels liegen in der Datei \code{norm\_labels.csv} jeder Sitzung;
-die Positionen sind schon auf $[0,1]^2$ normiert. Es gibt drei verwendete
+Sekunde. Die Positionen werden direkt auf $[0,1]^2$ normiert. Es gibt drei verwendete
 Generationen des Programms:
 \begin{itemize}
   \item \textbf{Gen~1} (Sitzungen 01--04): Der Punkt bewegt sich gleichmäßig
@@ -69,6 +67,15 @@ protokolliert. Die Bilder werden auf beiden Geräten mit
 \num{640}~$\times$~\num{480} Pixeln gespeichert.
 \Cref{tab:session_conditions} zeigt alle Bedingungen.
 
+Zum Vergleich hat eine zweite Person (Person~B) zwei Sitzungen mit Gen~4
+aufgenommen (\SI{120}{\second}, \SI{90}{\percent} Ecken, ohne Brille, hell):
+Sitzung~28 mit Gerät~A vor einem ruhigen weißen Hintergrund und Sitzung~29 mit
+Gerät~B vor einem unruhigen Hintergrund mit Fenster. Sitzung~28 nutzt einen
+etwas kleineren Bildschirmbereich (\num{1390}~$\times$~\num{880} Pixel); die
+Normierung auf $[0,1]^2$ gleicht das aus. Die Sitzungen von Person~B werden
+getrennt ausgewertet (\cref{sec:person_b}) und gehen nicht in die Mittelwerte
+der 18 Sitzungen von Person~A ein.
+
 \section{Vorverarbeitung}
 \label{sec:meth_vorverarbeitung}
 \begin{itemize}
@@ -81,8 +88,8 @@ protokolliert. Die Bilder werden auf beiden Geräten mit
         Standardabweichungen von ImageNet normiert. Es gibt keinen Gesichts-
         oder Augenausschnitt.
   \item \textbf{Bereinigte Labels:} Für Gen~4 kann man die \code{WAIT}-Bilder
-        entfernen. Das Skript \code{session\_design.py --write-clean} schreibt
-        dafür die Datei \code{norm\_labels\_clean.csv}.
+        entfernen, weil die Phase zu jedem Bild protokolliert ist
+        (\cref{sec:cleaning}).
 \end{itemize}
 
 \section{Modell und Training}
@@ -90,27 +97,25 @@ protokolliert. Die Bilder werden auf beiden Geräten mit
 Das Modell besteht aus zwei Teilen:
 \begin{enumerate}
   \item einem \textbf{ResNet-18}~\cite{he2016resnet}, auf ImageNet
-        vortrainiert (\code{ResNet18\_Weights.DEFAULT}), als Feature
-        Extractor. Es liefert 512 Features pro Bild.
+        vortrainiert, als Feature Extractor. Es liefert 512 Features pro Bild.
   \item einem \textbf{Regression Head}: ein MLP aus vier vollständig
         verbundenen Schichten $512 \to 512 \to 256 \to 128 \to 2$ mit ReLU,
         Dropout $p=0,2$ nach der zweiten Schicht und einer Activation am
         Ausgang (Standard: Sigmoid). Er berechnet daraus die Position $(x,y)$.
 \end{enumerate}
-Trainiert wird mit L1-Loss (\code{nn.L1Loss}), AdamW (Learning Rate $10^{-4}$,
+Trainiert wird mit L1-Loss, AdamW (Learning Rate $10^{-4}$,
 Weight Decay $10^{-5}$), Batch Size 32 und Early Stopping (Abbruch nach drei
 Epochs ohne Verbesserung, höchstens 500 Epochs). Das Vorgehen hat zwei Stufen:
 \begin{enumerate}
-  \item \textbf{Basismodell (E0):} Der Head wird auf GazeCapture trainiert
-        (\code{train\_base.py}). Von fünf Seeds wird der Lauf mit dem kleinsten
+  \item \textbf{Basismodell (E0):} Der Head wird auf GazeCapture trainiert.
+        Von fünf Seeds wird der Lauf mit dem kleinsten
         Validierungsfehler behalten.
   \item \textbf{Personalisierung (E1--E3):} Der Head des Basismodells wird mit
-        den Bildern einer eigenen Sitzung weiter trainiert
-        (\code{personal\_exp.py}). Der Backbone bleibt dabei eingefroren,
+        den Bildern einer eigenen Sitzung weiter trainiert. Der Backbone bleibt dabei eingefroren,
         auch die BatchNorm-Statistiken.
 \end{enumerate}
 Weil der Backbone eingefroren ist, werden seine Features nur einmal berechnet
-und gespeichert (Feature-Cache). Danach wird nur der Head trainiert. Ein Lauf
+und gespeichert. Danach wird nur der Head trainiert. Ein Lauf
 dauert deshalb nur Sekunden.
 
 \section{Auswertung}
@@ -133,38 +138,26 @@ dauert deshalb nur Sekunden.
         (\cref{sec:loading}).
   \item \textbf{Räumliche Analyse:} Fehler in Mitte, Rändern und Ecken des
         Bildschirms (\cref{sec:partition}).
+  \item \textbf{Zeitliche Glättung (E4):} Ein Moving Average über die
+        letzten $k$ Vorhersagen wird nachträglich auf die gespeicherten
+        Testvorhersagen angewendet. Gemessen werden Genauigkeit ($\Ediag$) und
+        Stabilität (RMS-S2S, \cref{sec:smoothing}).
 \end{itemize}
 
 \section{Implementierung}
 \label{sec:meth_implementierung}
-Der Code ist in Python mit PyTorch und torchvision geschrieben. Die wichtigsten
-Teile sind:
-\begin{itemize}[nosep]
-  \item \code{main.py}: lädt GazeCapture, normiert die Ziele und erstellt die
-        Splits;
-  \item \code{model.py}, \code{dataset.py}: Modell, Losses, Training,
-        Laden der Daten und Feature-Cache;
-  \item \code{metrics.py}: Diagonalfehler und Baselines (eine einzige Quelle
-        für alle Skripte);
-  \item \code{exp.py}: Hyperparameterstudie mit fünf Wiederholungen;
-  \item \code{train\_base.py}, \code{personal\_exp.py}: Basismodelle und
-        Personalisierung (E0--E3);
-  \item \code{session\_design.py}: Abdeckung, Transition Frames und bereinigte
-        Labels;
-  \item \code{spatial\_analysis.py}, \code{plot\_targets.py}: Abbildungen;
-  \item \code{auswertung.py}: erstellt die Tabellen aus den Ergebnisdateien;
-  \item Notebook \code{notebooks/Masterarbeit.ipynb}: führt alle Experimente aus und
-        erstellt Tabellen und Abbildungen.
-\end{itemize}
+Der Code ist in Python mit PyTorch und torchvision geschrieben. Eine kurze
+Übersicht über den Aufbau des Codes und die Befehle zum Wiederholen der
+Experimente steht im Anhang (\cref{sec:anhang_code,sec:anhang_befehle}).
 Alle Experimente laufen ohne Grafikkarte auf der CPU des HP-Laptops
 (Gerät~B): AMD Ryzen~7 3700U, etwa \SI{13}{\giga\byte} nutzbarer
 Arbeitsspeicher, Ubuntu~26.04.1~LTS, Python~3.12.3, PyTorch~2.12.1 und torchvision~0.27.1
-(jeweils CPU-Version). Die Befehle zum Wiederholen der
-Experimente stehen im Anhang (\cref{sec:anhang_befehle}). Der Code und die
+(jeweils CPU-Version). Der Code und die
 Web-Demo sind auf GitHub verfügbar:
-\url{https://github.com/RafeiKAr/gaze-estimation}. Eine Kopie liegt in der
+\url{https://github.com/RafeiKAr/gaze-estimation}. Das Basismodell der Demo liegt auf Hugging Face:
+\url{https://huggingface.co/RafeiKAr/demo_model}. Eine Kopie liegt in der
 BHT-Cloud: \url{https://cloud.bht-berlin.de/index.php/s/P4GkQ9J8zWHbdf9}. Die
-Bilder und Videos der eigenen Aufnahmen zeigen das Gesicht des Autors. Sie sind
+Bilder und Videos der eigenen Aufnahmen zeigen die Gesichter der beiden Personen. Sie sind
 deshalb nicht öffentlich, sondern liegen in einem privaten Dataset auf
 Hugging Face.
 

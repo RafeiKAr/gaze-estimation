@@ -19,18 +19,20 @@ BHT Berlin, 2026). Code: https://github.com/RafeiKAr/gaze-estimation
 
 ## Inhalt
 
-- 27 Kalibriersitzungen einer Person (des Autors), davon 18 in der Arbeit ausgewertet
-- Gerät A: Microsoft Surface Pro 9 (Sitzungen 01–03, 25–27)
-- Gerät B: HP-Laptop (Sitzungen 05–09, 19–24); Sitzung 04: Gerät nicht protokolliert
+- Person A (der Autor): 27 Kalibriersitzungen, davon 18 in der Arbeit ausgewertet
+- Person B: 2 Sitzungen (28: Gerät A, ruhiger Hintergrund; 29: Gerät B, unruhiger
+  Hintergrund mit Fenster; beide ohne Brille, hell, 120 s)
+- Gerät A: Microsoft Surface Pro 9 (Sitzungen 01–03, 25–28)
+- Gerät B: HP-Laptop (Sitzungen 05–09, 19–24, 29); Sitzung 04: Gerät nicht protokolliert
 - pro Sitzung (Ordner `01/`, `02/`, …): Webcam-Bilder (640 × 480) im Ordner `images/`
   und, falls vorhanden, das Video der Aufnahme
 - Die Labels (Position des Punktes) liegen nicht hier, sondern im Code-Repository.
 
 ## Lizenz und Datenschutz
 
-- **Alle Rechte vorbehalten.** Die Bilder und Videos zeigen das Gesicht des Autors und
-  sind personenbezogene Daten.
+- **Alle Rechte vorbehalten.** Die Bilder und Videos zeigen die Gesichter von zwei Personen
+  und sind personenbezogene Daten.
 - Das Dataset ist **privat**. Eine Weitergabe, Veröffentlichung oder Nutzung für
   andere Zwecke (insbesondere Training von Gesichts- oder Personenerkennung) ist
-  ohne schriftliche Zustimmung des Autors nicht erlaubt.
+  ohne schriftliche Zustimmung der abgebildeten Personen nicht erlaubt.
 - Zugang nur für Betreuer und Gutachter der Masterarbeit auf Anfrage.

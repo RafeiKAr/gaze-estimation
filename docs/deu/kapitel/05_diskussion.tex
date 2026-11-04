@@ -20,8 +20,11 @@ sogar für eine zweite Aufnahme (\SI{47}{\percent} Verringerung,
 \SI{19,79}{\percent}, also um etwa ein Drittel, und die beste Sitzung erreicht
 \SI{10,5}{\percent} (\cref{sec:sessions_results}). Dieser Split ist aber zu
 optimistisch.
-\emph{Antwort:} Eine kurze Personalisierung hilft deutlich, aber nur unter
-guten Aufnahmebedingungen. Der zufällige Split überschätzt den Nutzen.
+Bei Person~B brachte die Personalisierung dagegen in beiden Sitzungen keinen
+Gewinn, selbst mit zufälligem Split (\cref{sec:person_b}).
+\emph{Antwort:} Eine kurze Personalisierung kann deutlich helfen, aber nur
+unter guten Aufnahmebedingungen und nicht für jede Person. Der zufällige Split
+überschätzt den Nutzen.
 
 \paragraph{FF2: Welche Trainingseinstellung eignet sich?}
 Auf GazeCapture unterscheiden sich die meisten Einstellungen nicht
@@ -34,17 +37,21 @@ L1-Loss, Learning Rate $10^{-4}$ und Batch Size 32. Die Wahl beruht vor allem au
 Stabilität und Aufwand; bei der Learning Rate auch auf dem kleinsten Fehler
 im ersten Test.
 
-\paragraph{FF3: Welche Rolle spielen Datenaufteilung und Kalibrierung?}
+\paragraph{FF3: Welche Rolle spielen Datenaufteilung, Kalibrierung und Glättung?}
 Die Aufteilung ist sehr wichtig. Der zufällige Split ist zu optimistisch, weil
 fast gleiche Nachbarbilder in Training und Test landen. Die gleichmäßige
 Bewegung des Ziels (Gen~1) deckt den Bildschirm am besten ab und hatte den
 kleinsten Fehler. Sprünge erzeugen Bilder mit falschen Labels. Diese
 WAIT-Bilder zu entfernen, verbessert das Ergebnis leicht (\num{0,84}
 Prozentpunkte, nicht signifikant). Mehr Labels in den Ecken senken den
-Eckfehler nicht. \emph{Antwort:} Eine kurze, gleichmäßige Bewegung über den
+Eckfehler nicht. Ein Moving Average über die Vorhersagen macht sie deutlich
+ruhiger (RMS-S2S $-$\SI{40}{\percent} bei $k=3$), verbessert die Genauigkeit
+aber nicht; längere Fenster verschlechtern sie wegen der Verzögerung
+(\cref{sec:smoothing}). \emph{Antwort:} Eine kurze, gleichmäßige Bewegung über den
 ganzen Bildschirm ist am besten. Sprünge sollte man protokollieren, damit man
 Transition Frames entfernen kann. Bewerten sollte man immer mit einem zeitlichen
-Split.
+Split. Ein kurzer Moving Average (etwa \SI{0,5}{\second}) eignet sich für eine
+ruhige Anzeige, ersetzt aber keine bessere Kalibrierung.
 
 \paragraph{FF4: Welchen Einfluss haben die Aufnahmebedingungen?}
 Der stärkste Faktor ist der Hintergrund: Ein unruhiger Hintergrund erhöht den
@@ -71,6 +78,11 @@ Einige Ergebnisse passen gut zur Literatur:
         Unterschied zwischen \code{norm\_random} und \code{norm\_subject}
         überschätzen zufällige Splits die Leistung
         (\cref{subsec:norm_subject}).
+  \item \textbf{Glättung verbessert die Precision, nicht die Accuracy.} Das
+        entspricht der Unterscheidung von Niehorster et
+        al.~\cite{niehorster2026quality}: Ein Moving Average verringert die
+        Streuung von Bild zu Bild deutlich, der systematische Fehler bleibt
+        aber fast gleich (\cref{sec:smoothing}).
   \item \textbf{Falsche Labels haben einen kleinen Effekt.} Auch DMRF
         \cite{jiang2026dmrf} senkt den Fehler nur wenig
         ($3,92^\circ \rightarrow 3,85^\circ$). Hier bringt das Entfernen der
@@ -89,9 +101,11 @@ ohnehin nicht direkt mit der Literatur vergleichbar (\cref{sec:vergleich}).
 \section{Grenzen der Arbeit}
 \label{sec:grenzen}
 \begin{itemize}
-  \item \textbf{Eine Person:} Alle eigenen Aufnahmen stammen von einer Person
-        (dem Autor), aufgenommen mit zwei Geräten. Die Ergebnisse gelten daher
-        nicht automatisch für andere Personen.
+  \item \textbf{Wenige Personen:} Die 18 ausgewerteten Sitzungen stammen von
+        einer Person (dem Autor). Von einer zweiten Person gibt es nur zwei
+        Sitzungen, und bei ihr hat die Personalisierung nicht funktioniert.
+        Warum, wurde nicht geprüft. Die Ergebnisse lassen sich daher nicht ohne
+        Weiteres auf andere Personen übertragen.
   \item \textbf{Wenige Sitzungen und vermischte Bedingungen:} 18 Sitzungen
         reichen nicht für sichere Aussagen über einzelne Faktoren. Gestaltung,
         Licht, Hintergrund und Brille ändern sich oft gleichzeitig.
@@ -111,6 +125,10 @@ ohnehin nicht direkt mit der Literatur vergleichbar (\cref{sec:vergleich}).
         für Mehrfachvergleiche (zum Beispiel nach Bonferroni) gerechnet.
         Knappe Ergebnisse wie $p=0,032$ (L1 gegenüber dem sensitiven Loss) sind
         daher vorsichtig zu lesen.
+  \item \textbf{Glättung nur nachträglich:} Der Moving Average wurde auf
+        gespeicherten Vorhersagen des sequenziellen Splits (meist ein Seed)
+        und der zwei Videos ausgewertet. Für Fixationen gibt es nur einen
+        einzelnen Durchlauf der Demo.
   \item \textbf{Metrik:} Der Diagonalfehler ist nicht direkt mit Winkelfehlern
         oder Zentimetern aus der Literatur vergleichbar.
 \end{itemize}

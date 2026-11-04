@@ -30,12 +30,21 @@ The most important results are:
         was best.
   \item Frames directly after a jump of the target have wrong labels. Removing
         them helps a little, but costs nothing.
+  \item For a second person (two sessions), personalization brought no gain. A
+        calibration is also tied to the person: the calibration of person~A was
+        worse than the screen centre on person~B.
+  \item A short moving average (about \SI{0.5}{\second}) makes the predictions
+        about \SI{40}{\percent} calmer without a measurable loss of accuracy.
+        Longer windows raise the error, because the prediction lags behind the
+        gaze. Most of the error is systematic and cannot be removed by
+        smoothing.
 \end{itemize}
 Overall, the thesis shows: data-efficient personalization works with simple
 means. But the accuracy depends strongly on the recording conditions, and it must be
-assessed with a realistic data split. All recordings come from one person (the
-author). The results therefore hold for this person only at first; whether they
-transfer to other persons must be shown by a study with several persons.
+assessed with a realistic data split. The benefit also depends on the person:
+for a second person, the same method brought no gain, and a calibration of
+another person was worse than the screen centre. A study with more persons has
+to show how often this happens and why.
 
 \section{Outlook}
 \label{sec:ausblick}
@@ -50,23 +59,37 @@ Several next steps are obvious:
         middle way between head-only training and full fine-tuning.
   \item \textbf{More persons and more sessions,} with conditions that change in
         only one factor at a time.
+  \item \textbf{Adaptive smoothing.} Filters that smooth less during fast
+        movement and more during fixations, for example the 1~Euro
+        filter~\cite{casiez2012oneeuro}, could reach the calmness of the moving
+        average without its lag.
   \item \textbf{Taking head movement into account,} for example with the head
         position as an extra feature or with normalized face images.
 \end{itemize}
 
 \paragraph{Web demo.}
-As a practical test, I built a demo in the browser (server with FastAPI,
-suitable for Hugging Face Spaces). The user follows a point for 60
-seconds. Then a model is personalized, and the gaze is shown live as a light
-field on a grid of $3\times3$ cells. At the end, an evaluation shows when which
-cell was looked at. The demo already uses some ideas from the outlook: an eye
-crop, spatial features of the ResNet-18, a ridge regression and the head
-position as an extra feature. A short test with five points (\SI{3}{\second}
-each) after the calibration measures the error on new frames. In several single
-tests, this error was between about \SI{17.6}{\percent} and
-\SI{25.2}{\percent} (last test: \SI{19.0}{\percent}); a constant estimate
-reaches about \SI{23}{\percent} on the calibration data. In a direct
-comparison, the test error fell from \SI{23.0}{\percent} to
+As a practical test, I built a demo in the browser (server with FastAPI). The
+user follows a point for about \SI{60}{\second}. The point starts at a random
+place, moves in a random direction at constant speed and bounces off the
+edges. A path is only used if it visits all cells of a $3\times3$ grid; this
+keeps the full screen coverage that proved important in
+\cref{sec:session_design}, while the calibration feels less monotonous. Then a
+model is personalized, and the gaze is shown live as a light field on a grid of
+$3\times3$ cells. The displayed position is a causal moving average over the
+last \SI{0.5}{\second} (\cref{sec:smoothing}). At the end, an evaluation shows
+when which cell was looked at. The demo already uses some ideas from the
+outlook: an eye crop, spatial features of the ResNet-18, a ridge regression and
+the head position as an extra feature. A short test with five points
+(\SI{3}{\second} each) after the calibration measures the error on new frames.
+In one run of the new version, the error on the validation data of the
+calibration was \SI{19.1}{\percent}, compared with \SI{25.4}{\percent} for
+the base model without adaptation. During the whole tracking, the base model
+pointed only at the centre cell, while the personalized model spread the gaze
+over eight of the nine cells. With the earlier version of the demo (fixed snake
+path), the error in the five-point test was between about \SI{17.6}{\percent} and
+\SI{25.2}{\percent} in several single tests (last test: \SI{19.0}{\percent});
+a constant estimate reaches about \SI{23}{\percent} on the calibration data. In
+a direct comparison, the test error fell from \SI{23.0}{\percent} to
 \SI{17.6}{\percent} with the head position. The values vary strongly between
 runs and were not evaluated systematically. But they show that head movement
 and light are large sources of error in live use.

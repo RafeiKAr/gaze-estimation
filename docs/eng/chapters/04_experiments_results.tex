@@ -6,16 +6,17 @@ This chapter describes the experiments on the GazeCapture dataset
 \cite{krafka2016itracker} and on my own recordings. First, I explain the model,
 the data and the evaluation (\cref{sec:setup}). Then follow the training
 settings (\cref{sec:training}), the spatial distribution of the error and the
-loss functions (\cref{sec:spatial}), and finally the personalization
-(\cref{sec:sessions,sec:loading,sec:session_design}).
+loss functions (\cref{sec:spatial}), the personalization
+(\cref{sec:sessions,sec:loading,sec:session_design}), and the temporal
+smoothing of the predictions (\cref{sec:smoothing}), and finally a second
+person (\cref{sec:person_b}).
 \Cref{sec:discussion} summarizes what the results mean.
 
 All numbers were checked against the log files of the experiments. During this
 check, a bug in the evaluation code was found and fixed (\cref{sec:metric}).
 All values in the tables use the corrected metric. The learning curves in
-\cref{fig:normalization} (bottom) and \cref{fig:lr_curves}, however, come from
-older single runs with a different data selection; the captions name the
-differences.
+\cref{fig:lr_curves}, however, come from older single runs with a different
+data selection; the caption names the differences.
 
 % ==============================================================================
 \section{Experimental Setup}
@@ -34,11 +35,10 @@ The subset of GazeCapture and the two splits \code{norm\_subject} and
 \crefoder{sec:meth_daten}{Chapter~3 of the thesis}. In
 \code{norm\_random}, all frames of a person for the same target point are
 together in training or in test. For the hyperparameter study, I draw \num{1000} training and \num{200} test
-frames \emph{randomly} from the split files (fixed seed 0,
-\code{--sample-seed 0}). For \code{norm\_subject}, the training frames come
-from 179 persons and the test frames from 45 other persons. Older runs simply
-took the \emph{first} rows of the sorted files. These were only five training
-persons and one test person. I do not use these runs any more.
+frames \emph{randomly} from the splits (fixed seed). For \code{norm\_subject}, the training frames come
+from 179 persons and the test frames from 45 other persons. Earlier runs
+with a non-random selection (only five training persons and one test person)
+are no longer used.
 
 \subsection{Error Measure}
 \label{sec:metric}
@@ -59,11 +59,7 @@ large as the whole screen diagonal.
 \subsection{Procedure}
 \label{sec:protocol}
 
-The hyperparameter study is started with the command
-\begin{center}
-  \code{python exp.py --experiment all --sample-seed 0 --val-size 200}
-\end{center}
-I always change only one value (for example the batch size). All other values
+In the hyperparameter study, I always change only one value (for example the batch size). All other values
 stay at the default setting (\cref{tab:default_config}). Each setting is
 trained five times. Early stopping uses its own validation set of 200 frames of
 a further person. I report the \emph{test} error at the epoch with the lowest
@@ -72,20 +68,16 @@ tables show the mean test error, the two-sided \SI{98}{\percent} confidence
 interval (CI) of the mean (Student's $t$, four degrees of freedom) and the mean
 run time.
 
-\paragraph{What the \enquote{run time} measures.} The run time is the real
-duration (wall clock) of \emph{one whole training run}, averaged over the five
-runs. A run starts with the evaluation of the untrained model (epoch~0) and ends
-when early stopping stops. It contains all epochs and, after each epoch, the
-evaluation on training, validation and test data. The run time is \emph{not} the
-time per epoch. It does \emph{not} contain loading the images or the one-time
-computation of the backbone features before the run. Because early stopping
+\paragraph{Run time.} The run time is the duration of \emph{one whole
+training run} until early stopping, averaged over the five runs. The one-time
+computation of the backbone features is not included. Because early stopping
 stops at different times, the run time also shows how long a setting keeps
 improving.
 
 \begin{table}[htbp]
   \centering
-  \caption[Default setting of \code{exp.py}]{Default setting of \code{exp.py}. Each variation changes exactly
-           one of these values.}
+  \caption[Default setting of the hyperparameter study]{Default setting of the hyperparameter study. Each variation
+           changes exactly one of these values.}
   \label{tab:default_config}
   \small
   \begin{tabular}{ll@{\hspace{2.5em}}ll}
@@ -94,7 +86,7 @@ improving.
     \midrule
     Split               & \code{norm\_subject} & Trainable layers & FC only \\
     Train / test size   & \num{1000} / \num{200}\textsuperscript{a} & Output activation & Sigmoid \\
-    Batch size          & 32                   & Loss             & L1 (\code{standard}) \\
+    Batch size          & 32                   & Loss             & L1 \\
     Learning rate       & $10^{-4}$            & Max.\ epochs / patience & 500 / 3 \\
     Weight decay        & $10^{-5}$            & Validation set   & 200 frames\textsuperscript{b} \\
     Repeats             & 5                    & & \\
@@ -144,82 +136,41 @@ from the top left corner. Their range therefore depends on screen size and
 orientation. The \num{347085} frames of the 262 persons come from ten screen
 formats, from $320\times480$ to $1024\times768$ points, in portrait and
 landscape. I therefore divide the targets by the screen width $W$ and height
-$H$ of each frame (\code{main.py}; values outside $[0,1]$ are clipped, which
+$H$ of each frame (values outside $[0,1]$ are clipped, which
 affects \SI{0.006}{\percent} of the frames):
 \begin{equation}
   x_{\mathrm{norm}} = \frac{x}{W},\qquad y_{\mathrm{norm}} = \frac{y}{H}.
 \end{equation}
 \Cref{fig:normalization} shows the effect. Without normalization, the targets
 of the many smartphone frames lie mainly at the top left, and the same
-coordinate means a different place on every device (\cref{fig:raw_targets}).
-The error values are then not comparable between devices (left column). After
-normalization, all targets lie in $[0,1]^2$, and \cref{eq:ediag} is
-well-defined (right column). All further experiments use normalized targets.
+coordinate means a different place on every device (\cref{fig:raw_targets}). An
+error in screen points would therefore not be comparable between devices. After
+normalization, all targets lie in the unit square $[0,1]^2$
+(\cref{fig:normalized_targets}), and the error measure in \cref{eq:ediag} is
+defined in the same way for all devices. All further experiments use normalized
+targets.
 
 \begin{figure}[htbp]
   \centering
-  \begin{subfigure}[t]{0.43\textwidth}
+  \begin{subfigure}[t]{0.47\textwidth}
     \centering
-    \includegraphics[width=\textwidth]{raw_targets.png}\\[2mm]
-    \includegraphics[width=\textwidth]{raw_learning_curve.png}
+    \includegraphics[width=\textwidth]{raw_targets.png}
     \caption[Raw targets in screen points]{Raw targets in screen points (density of all frames,
-             logarithmic colour scale); dashed: outlines of the screen formats.
-             Bottom: learning curve of an early notebook run on raw
-             coordinates; these values are not percentages of a common
-             diagonal and not comparable with the other figures and tables.}
+             logarithmic colour scale); dashed: outlines of the screen formats.}
     \label{fig:raw_targets}
   \end{subfigure}
   \hfill
-  \begin{subfigure}[t]{0.52\textwidth}
+  \begin{subfigure}[t]{0.47\textwidth}
     \centering
-    \includegraphics[width=0.82\textwidth]{normalized_targets.png}\\[2mm]
-    \includegraphics[width=\textwidth]{norm_test_train_const_rand.png}
+    \includegraphics[width=0.88\textwidth]{normalized_targets.png}
     \caption[Normalized targets]{Normalized targets (same display; dashed: unit
              square). The bright cells are calibration points that are shown at
-             the same relative places on all devices. Bottom: learning curve of an
-             older notebook run on \code{norm\_random} (\num{1000}/\num{200},
-             older data selection, see \cref{sec:data}). Epoch~0 is the
-             untrained model. The horizontal lines are fixed baselines of the
-             \emph{whole} dataset (27.25\,\% and 38.96\,\%), not the baselines
-             of the test data of this run (constant baseline there:
-             26.76\,\%, see text). The values are not directly comparable with
-             the tables.}
+             the same relative places on all devices.}
     \label{fig:normalized_targets}
   \end{subfigure}
-  \caption{Raw and normalized gaze targets compared.}
+  \caption{Distribution of the GazeCapture gaze targets before and after normalization.}
   \label{fig:normalization}
 \end{figure}
-
-\paragraph{Why does the curve start at the constant baseline and not at the random baseline?}
-In \cref{fig:normalized_targets}, the curves start at epoch~0, that is,
-\emph{before} the first training step, at \SI{26.77}{\percent}. One could expect
-that an untrained model is as bad as random guessing (about
-\SI{40}{\percent}). This is not true.
-
-The random baseline guesses a \emph{different} random point on the screen for
-each image. An untrained network does not do that. Its weights are small random
-numbers. The last linear layer therefore outputs values close to $0$ for every
-image, and the sigmoid turns them into $\sigma(0)=0.5$. So the untrained model
-predicts almost the \emph{same} point for all images: the screen centre
-$(0.5, 0.5)$. This is exactly what the constant baseline does. Correct is
-therefore:
-\begin{itemize}[nosep]
-  \item epoch~0 $\approx$ constant baseline of the \emph{same} test data
-        (\enquote{always look at the centre});
-  \item only when training brings the curve \emph{below} this value has the
-        model learned something from the images;
-  \item the random baseline is an upper limit for \enquote{pure guessing}; a
-        model should never be above it.
-\end{itemize}
-The measured values confirm this: on the 200 test images of this run, the
-constant baseline is \SI{26.76}{\percent} (mean of the training targets) or
-\SI{26.71}{\percent} (screen centre). This matches the start value of
-\SI{26.77}{\percent}. It is important to compute the baseline on the
-\emph{same} data as the curve. A baseline on the whole dataset
-(\SI{27.25}{\percent}) is somewhat higher, and the curve then seems to start
-\enquote{below the baseline} -- as with the horizontal line in
-\cref{fig:normalized_targets}. The code therefore now computes the baselines on
-the same subset (\code{metrics.subset\_baselines}).
 
 % ------------------------------------------------------------------------------
 \subsection{Baselines}
@@ -228,12 +179,16 @@ the same subset (\code{metrics.subset\_baselines}).
 I use two simple reference estimators. The \emph{constant baseline} predicts the
 mean of the training targets for every test image. The \emph{random baseline}
 draws predictions uniformly from $[0,1]^2$. A model is only useful if it is
-clearly better than the constant baseline.
+clearly better than the constant baseline. An untrained model is not at the
+random baseline, but at the constant baseline: its last layer outputs values
+close to $0$, the sigmoid turns them into $0.5$, and the model predicts roughly
+the screen centre for all images. A learning effect therefore only shows when
+the error is \emph{below} the constant baseline of the same test data.
 
 \begin{table}[htbp]
   \centering
   \caption[Baseline errors $\Ediag$ in \si{\percent}]{Baseline errors $\Ediag$ in \si{\percent}. Top: whole dataset
-           (\code{exp.py}, bootstrap with 30 samples of 2000 frames each, mean
+           (bootstrap with 30 samples of 2000 frames each, mean
            and \SI{98}{\percent} CI). Bottom: the same random training/test
            subsets (seed 0) as used for model training (no CI, one fixed
            subset).}
@@ -260,8 +215,8 @@ results in \cref{sec:training}, because it was computed on the same data.
 \label{sec:training}
 % ==============================================================================
 
-All results in this section come from one run (\code{exp\_results\_all.json};
-\code{exp.py}, corrected metric, random subsets with seed 0, early stopping on
+All results in this section come from one common series of experiments
+(corrected metric, random subsets with a fixed seed, early stopping on
 validation, five repeats per setting). The constant baseline of the default
 setting on the same data is \SI{28.46}{\percent}.
 
@@ -369,7 +324,7 @@ the other values is significantly better.
 \label{sec:layers}
 
 I compare three depths of fine-tuning (\cref{tab:params}): only the regression
-head (FC only), the head plus the last residual stage (\code{layer4}), and the
+head (FC only), the head plus the last residual stage (layer~4), and the
 whole network.
 
 \begin{table}[htbp]
@@ -568,7 +523,7 @@ section.
 \label{sec:heatmaps}
 
 \Cref{fig:heatmaps} uses the 200 test predictions of the default model
-(\code{norm\_subject}, L1 loss; file \code{results/heatmap/base\_loss1.csv}).
+(\code{norm\_subject}, L1 loss).
 For a position $\bm c$ (centre, edge or corner), I compute the mean error
 $\bar e(\bm c)$ of all examples within radius $r$ and draw it as a Gaussian
 spot:
@@ -617,7 +572,7 @@ these areas more weight in the loss. Let $\hat{\bm p}_i=(\hat x_i,\hat y_i)$ be
 the prediction and $\bm p_i=(x_i,y_i)$ the target of example $i$ in a batch of
 size $N$.
 
-\paragraph{L1 loss (\code{nn.L1Loss}, \enquote{standard}).}
+\paragraph{L1 loss.}
 \begin{equation}
   \mathcal{L}_{1} = \frac{1}{2N}\sum_{i=1}^{N}\bigl(|\hat x_i-x_i| + |\hat y_i-y_i|\bigr).
 \end{equation}
@@ -625,7 +580,7 @@ The gradient always has the same size, no matter how large the error is. The
 loss is therefore robust against outliers (for example wrong labels during
 target changes), but it treats all screen positions the same.
 
-\paragraph{Smooth L1 loss (\code{nn.SmoothL1Loss}, $\beta=1$).}
+\paragraph{Smooth L1 loss ($\beta=1$).}
 For a residual $u$:
 \begin{equation}
   \ell_\beta(u) =
@@ -638,7 +593,7 @@ It is quadratic for small and linear for large residuals. Because all residuals
 here are smaller than $\beta=1$, it behaves like a scaled squared error: for
 small errors the gradient becomes small.
 
-\paragraph{Sensitive L1 loss (weighted by position, \code{sensitive}).}
+\paragraph{Sensitive L1 loss (weighted by position).}
 Each example is weighted with its $L_1$ distance to the screen centre:
 \begin{equation}
   d_i = |x_i-0.5| + |y_i-0.5| \in [0,1],\qquad
@@ -650,14 +605,13 @@ Each example is weighted with its $L_1$ distance to the screen centre:
 \end{equation}
 An example in a corner counts twice as much as one in the centre, an example at
 an edge about $1.4$ times as much. The gradient for outer targets becomes
-larger, and this should pull the predictions away from the centre. (This
-formula matches the implementation in \code{model.py}.)
+larger, and this should pull the predictions away from the centre.
 
 The \enquote{improved sensitive loss} in \cref{tab:loss_aux} was another
-variant from a notebook for trying things out. Its exact formula is no longer in
-the current code. I list it only for completeness.
+variant from an early trial. Its exact formula is no longer documented; it is
+listed only for completeness.
 
-\subsection{Results of the Loss Comparison}
+\subsection{Results: Comparison of the Loss Functions}
 \label{sec:loss_results}
 
 \Cref{tab:loss} shows the global comparison with five runs together with the
@@ -666,7 +620,7 @@ errors in the screen regions from \cref{sec:partition}.
 \begin{table}[htbp]
   \centering
   \caption[Comparison of L1 and sensitive L1 loss]{Comparison of L1 and sensitive L1 loss. Left: mean test error
-           $\Ediag$ over five runs (\code{exp.py}, \SI{98}{\percent} CI) and
+           $\Ediag$ over five runs (\SI{98}{\percent} CI) and
            mean run time. Right: mean Euclidean error per screen region
            (normalized units; one run each, 200 test examples, $r=0.15$; $n$ =
            number of examples). Last row: estimator that always outputs the
@@ -711,8 +665,8 @@ errors in the screen regions from \cref{sec:partition}.
     \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
     Loss & A & B & A & B & A & B & A & B \\
     \midrule
-    L1 (\code{nn.L1Loss})             & 24.54 & 24.63 & 17.01 & 16.74 & 28.28 & 28.98 & 34.93 & 35.07 \\
-    Smooth L1 (\code{nn.SmoothL1Loss})& 23.94 & 24.91 & 15.40 & 16.41 & 29.78 & 30.59 & 34.13 & 35.17 \\
+    L1                                & 24.54 & 24.63 & 17.01 & 16.74 & 28.28 & 28.98 & 34.93 & 35.07 \\
+    Smooth L1                         & 23.94 & 24.91 & 15.40 & 16.41 & 29.78 & 30.59 & 34.13 & 35.17 \\
     Sensitive L1                      & 25.57 & 25.55 & 19.11 & 18.61 & 29.87 & 29.93 & 33.41 & 34.20 \\
     Improved sensitive L1             & 25.53 & 27.75 & 19.20 & 21.86 & 29.17 & 35.03 & 33.77 & 31.58 \\
     \bottomrule
@@ -771,25 +725,22 @@ epoch with the lowest validation error. If the best epoch is 0, personalization
 did not improve the validation error. The reported test error is then that of
 the unchanged base model.
 
-All results from here on come from the script \code{personal\_exp.py} (notebook
-\code{notebooks/Masterarbeit.ipynb}) and use the corrected metric
-(\cref{eq:ediag}). All random seeds are fixed. The backbone, including its
+All results from here on use the corrected metric (\cref{eq:ediag}) and fixed
+random seeds. The backbone, including its
 BatchNorm statistics, is completely frozen.
 
-\paragraph{Feature cache.} Because the backbone is frozen, it gives the same 512
+\paragraph{Stored features.} Because the backbone is frozen, it gives the same 512
 features for an image in every epoch. I therefore compute these features only
 once per session and base model (without augmentation) and store them. After
 that, only the head is trained. This does not change the result, but a run
-takes only seconds on a CPU. The only difference to older notebook runs: there
-is no image augmentation during personalization.
+takes only seconds on a CPU. No image augmentation is used during
+personalization.
 
 \paragraph{Base models (E0).} The two base models are trained with the setting
 from \cref{sec:training} (FC only, sigmoid, L1, $\eta=10^{-4}$, batch size 32,
 \num{1000}/\num{200} random frames, seed~0, early stopping on validation) on
 \code{norm\_subject} and \code{norm\_random}. Of five seeds, I keep the run with
-the lowest \emph{validation} error (\code{train\_base.py},
-\code{models/base/base\_<split>.pt}; a JSON file documents the setting and all
-seeds). For \code{norm\_subject} this is seed~0 (validation
+the lowest \emph{validation} error. For \code{norm\_subject} this is seed~0 (validation
 \SI{27.37}{\percent}, test \SI{28.70}{\percent}; constant baseline of the same
 test data \SI{28.46}{\percent}), for \code{norm\_random} seed~3 (validation
 \SI{26.74}{\percent}, test \SI{27.81}{\percent}; constant baseline
@@ -828,6 +779,8 @@ from it. \Cref{tab:session_conditions} shows the recording conditions.
     23 / 24 & Gen 4 & with / without & busy; 120\,s; B \\
     25 / 26 & Gen 4 & with / without & busy; 120\,s; A \\
     27     & Gen 4 & with    & busy; 90\,s; A \\
+        \midrule
+    28 / 29 (person~B) & Gen 4 & without & bright; calm / busy; 120\,s; A / B \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -955,18 +908,16 @@ each.
 \subsection{Training Time of a Session}
 \label{sec:session_time}
 
-The time $t$ in \cref{tab:sessions} is the real duration of \emph{one whole
-personalization run} on the stored features: evaluation of the unchanged model
-(epoch~0), all epochs until early stopping and, after each epoch, the
-evaluation on training, validation and test data. It is neither a time per epoch
-nor a mean over several runs. It does not contain the one-time computation of
-the backbone features of the session. On a CPU, a run takes \SI{1.9}{\second}
+The time $t$ in \cref{tab:sessions} is the duration of \emph{one whole
+personalization run} on the stored features, from the evaluation of the
+unchanged model until early stopping. The one-time computation of the backbone
+features is not included. On a CPU, a run takes \SI{1.9}{\second}
 on average (\code{norm\_subject}) and \SI{2.4}{\second} (\code{norm\_random}).
 The duration grows with the number of frames and epochs (short Gen~2
-recordings: \SI{0.9}{\second}). Older notebook runs, which sent every image
-through the backbone in every epoch, needed 1 to 26 minutes per session. The
-\enquote{run time} in the hyperparameter tables (\cref{sec:protocol}), in
-contrast, is a mean over five runs of one GazeCapture setting.
+recordings: \SI{0.9}{\second}). Without
+stored features, i.e.\ with every image passing through the backbone in every
+epoch, a run took 1 to 26 minutes per session. The stored features are what
+makes a calibration in seconds possible.
 
 \subsection{Label Cleaning (Gen 4, E1b)}
 \label{sec:cleaning}
@@ -974,8 +925,8 @@ contrast, is a mean over five runs of one GazeCapture setting.
 In Gen~4, every segment starts with a WAIT phase of \SI{0.5}{\second}. The target
 appears at a new place, and the user first has to find it. These frames
 (\SI{10.0}{} to \SI{10.5}{\percent} of the labels) can have a wrong gaze label.
-Because they are logged exactly, one can write cleaned label files without the
-WAIT frames (\code{session\_design.py --write-clean}).
+Because the phase of every frame is logged, these frames can be removed from
+the labels in a targeted way.
 
 A simple comparison would be unfair, however: the cleaned model is tested
 without WAIT frames, while the original model is tested on all frames, including
@@ -1027,7 +978,7 @@ at least be removed from the evaluation, because they measure the error of the
 labels and not the error of the model. Removing them also from training costs
 nothing and helps in difficult sessions; the effect, however, is small.
 
-\paragraph{Variation between runs.} Two older notebook runs with the same
+\paragraph{Variation between runs.} Two older runs with the same
 setting on the same data (Gen~4, seeds not fixed) differed by \num{1.9} on
 average and by at most \num{5.5} percentage points. The new runs with three
 fixed seeds (\cref{tab:loading}) show a standard deviation of up to \num{3.1}
@@ -1079,17 +1030,17 @@ frames (720 and 540) for temporal blocks.
 
 \paragraph{Strategies.}
 \begin{description}[nosep]
-  \item[Random] (\code{--split random}): \SI{70}{\percent} / \SI{15}{\percent} /
+  \item[Random] \SI{70}{\percent} / \SI{15}{\percent} /
         \SI{15}{\percent} of the frames are drawn at random (reference; contains
         almost identical frames in training and test).
-  \item[Sequential] (\code{--split sequential}): The frames stay in recording
+  \item[Sequential] The frames stay in recording
         order. The first \SI{70}{\percent} are training, the next
         \SI{15}{\percent} validation and the last \SI{15}{\percent} test. At the
         start of the validation and the test block, one second (6 labels) is
         left out so that no neighbouring frames lie on both sides of a border.
         This matches real use: the user first calibrates and then uses the
         tracker.
-  \item[Two videos] (\code{--split two\_videos}): \SI{80}{\percent} of the
+  \item[Two videos] \SI{80}{\percent} of the
         frames of the first session are training, the other \SI{20}{\percent}
         (random) validation. The second session is used \emph{only} as test (all
         frames). I test both directions (21$\to$22 and 22$\to$21). This shows
@@ -1176,11 +1127,11 @@ The design of the session decides which screen areas the calibration data cover.
 Because the errors are largest at the edges and corners (\cref{sec:spatial}), the
 design should cover these areas well. I recorded three variants:
 \begin{itemize}[nosep]
-  \item \textbf{Standard video} (Gen~1, \code{base\_Code.py}): the target moves
+  \item \textbf{Standard video} (Gen~1): the target moves
         smoothly and without jumps across the screen;
   \item \textbf{Random jumps} (Gen~2): the target jumps every \SI{1.4}{} to
         \SI{2.7}{\second} to a random new start point;
-  \item \textbf{Corner-weighted jumps} (Gen~4, \code{base\_Code\_rand.py}):
+  \item \textbf{Corner-weighted jumps} (Gen~4):
         5-s segments with \SI{0.5}{\second} WAIT at a new start point and
         \SI{4.5}{\second} MOVE; \SI{90}{\percent} of the start points lie in the
         four corner areas (each \SI{10}{\percent}\,$\times$\,\SI{10}{\percent}
@@ -1190,7 +1141,7 @@ design should cover these areas well. I recorded three variants:
 \subsection{Screen Coverage and Transition Frames}
 
 \Cref{tab:design} is computed directly from the label and position files of the
-18 sessions (\code{session\_design.py}); no training is needed. The region shares
+18 sessions; no training is needed. The region shares
 use the partition from \cref{sec:partition} ($r=0.15$). Transition frames are
 labels recorded while the gaze is still moving to the new target: in Gen~4 the
 logged WAIT phase, in Gen~2 the labels up to \SI{0.5}{\second} after a jump
@@ -1340,6 +1291,177 @@ corner weighting raises the share of corner labels as planned, but it does not
 lower the corner error.
 
 % ==============================================================================
+\section{Temporal Smoothing of the Predictions (E4)}
+\label{sec:smoothing}
+% ==============================================================================
+
+The predictions of the model jump from frame to frame, even when the target
+moves only a little. For a calm display, it is natural to average them over a
+sliding time window (moving average). In the terms of
+\cref{subsec:datenqualitaet}, such smoothing can improve the \emph{precision}.
+Whether it also improves the \emph{accuracy} is the question of this section.
+
+\paragraph{Procedure.} No new training is needed for this experiment. I smooth
+the stored test predictions that are available in temporal order: the
+sequential split of all 18 sessions (seed 42, \cref{sec:design_performance}) and
+the two videos (21$\to$22 and 22$\to$21, three seeds, \cref{sec:loading}). The
+random split is not suitable, because its test frames are not in temporal
+order. For a window of $k$ frames, the \emph{causal} moving average is
+\begin{equation}
+  \bar{\bm p}_i = \frac{1}{k}\sum_{j=i-k+1}^{i}\hat{\bm p}_j
+  \label{eq:ma}
+\end{equation}
+(with fewer frames at the start of a sequence). It uses only past predictions
+and can therefore be used live, but it lags behind the gaze by about $(k-1)/2$
+frames. For comparison, I compute a \emph{centred} moving average over $k$
+frames around frame $i$. It needs future frames, so it is only possible
+offline, but it has no lag. At 6 labels per second, $k=3$, 5, 9 and 15
+correspond to about \SI{0.5}{}, \SI{0.8}{}, \SI{1.5}{} and \SI{2.5}{\second}.
+Besides the accuracy $\Ediag$, I measure the stability as the RMS-S2S of the
+predictions, i.e.\ the root mean square jump between two consecutive
+predictions, in percent of the screen diagonal. Each window is compared with
+$k=1$ (no smoothing) using a paired Wilcoxon test over the 18 sessions; the
+$p$-values are Holm-corrected per metric over the four windows.
+
+\begin{table}[htbp]
+  \centering
+  \caption[Temporal smoothing of the predictions]{Temporal smoothing of the predictions (sequential split,
+           18 sessions, seed 42). $\Ediag$ and RMS-S2S in \si{\percent} of the
+           screen diagonal, mean over the sessions; $\Delta$: difference to
+           $k=1$ in percentage points. $^{*}$: significant compared with $k=1$
+           (Wilcoxon, Holm-corrected, $p<0.05$).}
+  \label{tab:smoothing}
+  \small
+  \begin{tabular}{rr ccc ccc}
+    \toprule
+    & & \multicolumn{3}{c}{Causal (usable live)} & \multicolumn{3}{c}{Centred (offline only)} \\
+    \cmidrule(lr){3-5}\cmidrule(lr){6-8}
+    $k$ & Window & $\Ediag$ & $\Delta$ & RMS-S2S & $\Ediag$ & $\Delta$ & RMS-S2S \\
+    \midrule
+    1  & ---               & 27.93 & ---               & 2.17          & 27.93 & ---               & 2.17 \\
+    3  & \SI{0.5}{\second} & 28.10 & $+0.17$           & 1.29$^{*}$    & 27.79 & $-0.14^{*}$       & 1.30$^{*}$ \\
+    5  & \SI{0.8}{\second} & 28.33 & $+0.40$           & 1.01$^{*}$    & 27.73 & $-0.20$           & 1.02$^{*}$ \\
+    9  & \SI{1.5}{\second} & 28.87 & $+0.94$           & 0.79$^{*}$    & 27.80 & $-0.14$           & 0.78$^{*}$ \\
+    15 & \SI{2.5}{\second} & 29.68 & $+1.75^{*}$       & 0.63$^{*}$    & 28.02 & $+0.09$           & 0.62$^{*}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Stability.} Smoothing makes the predictions much calmer
+(\cref{tab:smoothing}). Already $k=3$ lowers RMS-S2S by \SI{40}{\percent}
+($2.17 \rightarrow 1.29$), $k=15$ by \SI{71}{\percent}. The difference is
+significant for all windows and both filters (Holm-corrected $p<0.001$).
+
+\paragraph{Accuracy.} With the causal moving average, however, the accuracy
+does not improve. The error grows with the window: for $k=3$ and $k=5$, the
+increase is small and not significant ($+0.17$ and $+0.40$ percentage points);
+for $k=15$, it is $+1.75$ percentage points (Holm $p=0.031$). The reason is the
+lag: the target moves in almost all frames (Gen~1 and the MOVE phase of Gen~4),
+and the smoothed prediction lags behind it. The effect is largest where the
+model actually follows the movement. In the ten sessions in which training
+changed the model (best epoch $>0$), the prediction is less calm (RMS-S2S
+\num{3.75}), and $k=15$ raises the error by $3.13$ percentage points
+($24.91 \rightarrow 28.04$). For the two videos, the error already rises from
+\SI{17.24}{\percent} to \SI{19.78}{\percent} at $k=5$. In the eight sessions
+with the unchanged base model, the predictions stay close to the centre, and
+smoothing changes hardly anything there.
+
+\paragraph{How much of the error is noise?} The centred moving average shows
+what smoothing \emph{without} lag can achieve at most. The gain is small: at
+best $-0.20$ percentage points over all sessions ($k=5$; Holm $p=0.055$),
+$-0.36$ percentage points in the ten adapted sessions ($p=0.023$), and $-1.2$
+percentage points for the two videos. Most of the error is therefore
+\emph{systematic} (offset and pull towards the screen centre) and not random
+noise from frame to frame. An average can only remove the noise, not the
+systematic error.
+
+\paragraph{Fixations in the demo.} When the target is still, the lag largely
+disappears. In the short test of the web demo (five fixed points,
+\num{77} predictions, one run; \cref{sec:ausblick}), $k=3$ halves the jumping
+of the predictions (RMS-S2S $5.79 \rightarrow 2.41$), and the error hardly
+changes (\SI{18.97}{\percent} $\rightarrow$ \SI{19.12}{\percent}). This value
+comes from a single run and is only a hint.
+
+\paragraph{Conclusion.} A moving average is a trade-off between stability and
+lag. A short causal window of about \SI{0.5}{\second} ($k=3$) lowers the jumping
+of the predictions by \SI{40}{} to \SI{60}{\percent} and costs no measurable
+accuracy. Longer windows are not worthwhile, because the lag raises the error
+when the gaze moves. The web demo therefore uses a window of
+\SI{0.5}{\second}. To improve the accuracy, one has to reduce the systematic
+error, for example with a better input or more calibration data.
+
+% ==============================================================================
+\section{Second Person (E5)}
+\label{sec:person_b}
+% ==============================================================================
+
+All previous results come from person~A. To check whether the benefit transfers
+to another person, person~B recorded two sessions with the same protocol
+(\cref{sec:meth_aufnahme}): session~28 with device~A and a calm background,
+session~29 with device~B and a busy background with a window. Both are evaluated
+in the same way as the sessions of person~A (base model \code{norm\_subject},
+seed 42). In addition, I use two videos to check whether a calibration transfers
+between the two sessions and between the persons. As partners from person~A, I
+use the sessions with the most similar conditions: 24 (device~B, without
+glasses, busy) and 26 (device~A, without glasses).
+
+\begin{table}[htbp]
+  \centering
+  \caption[Results of the second person]{Results of person~B and comparison with person~A. $\Ediag$
+           in \si{\percent}; const.: constant baseline of the same test data.
+           For comparison, the partner sessions of person~A.}
+  \label{tab:person_b}
+  \small
+  \begin{tabular}{lll rr rr}
+    \toprule
+    & & & \multicolumn{2}{c}{Random split} & \multicolumn{2}{c}{Sequential split} \\
+    \cmidrule(lr){4-5}\cmidrule(lr){6-7}
+    Session & Person & Device / background & $\Ediag$ & Const. & $\Ediag$ & Const. \\
+    \midrule
+    28 & B & A / calm               & 34.04 & 34.10 & 37.83 & 40.54 \\
+    29 & B & B / busy, window       & 32.33 & 32.32 & 36.16 & 35.10 \\
+    \midrule
+    26 & A & A / busy               & 18.61 & 29.48 & 31.74 & 30.32 \\
+    24 & A & B / busy               & 26.97 & 33.01 & 36.62 & 35.98 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Personalization.} For person~B, personalization did not work in
+either session (\cref{tab:person_b}). Even with the random split, which always
+shows a clear gain for person~A, the error is exactly at the constant baseline
+(\SI{34.04}{\percent} versus \SI{34.10}{\percent} and \SI{32.33}{\percent}
+versus \SI{32.32}{\percent}). Early stopping picks a very early epoch (0 to 8),
+and the predictions stay almost constant at the screen centre (standard
+deviation below \num{0.005}). The head therefore finds no relation to the gaze
+in the features. With the sequential split, the base model stays unchanged
+(best epoch 0). Under similar conditions, the partner sessions of person~A show
+at least with the random split a clear gain ($-$\SI{37}{\percent} and
+$-$\SI{18}{\percent}).
+
+\paragraph{Transfer between sessions and persons.} With two videos, too, the
+error for person~B stays at the level of the constant baseline: 28$\to$29
+\SI{33.94}{\percent} (constant \SI{34.30}{\percent}) and 29$\to$28
+\SI{34.11}{\percent} (\SI{34.06}{\percent}), each averaged over three seeds. A
+calibration of person~A on person~B, in contrast, is \emph{worse} than the screen
+centre: 24$\to$29 \SI{35.15}{\percent} versus \SI{33.93}{\percent} and
+26$\to$28 \SI{34.81}{\percent} versus \SI{33.45}{\percent}. In the other
+direction (29$\to$24, 28$\to$26), the model of person~B stays close to the
+centre. A calibration is therefore tied to the person.
+
+\paragraph{Possible causes.} Why personalization does not work for person~B was
+not examined. The input is an obvious candidate: the model uses the whole camera
+image, in which the eyes are only a few pixels large. Part of the gain for
+person~A probably comes from small head movements that accompany the gaze. If a
+person keeps the head stiller, this signal is missing. This fits the suggestion
+to use eye or face crops (\cref{sec:ausblick}). With two sessions, however, this
+is only a conjecture.
+
+\paragraph{Smoothing.} Because the predictions of person~B are almost constant,
+the moving average changes neither the error nor the stability noticeably
+(RMS-S2S below \num{0.2}).
+
+% ==============================================================================
 \section{Discussion of the Results}
 \label{sec:discussion}
 % ==============================================================================
@@ -1356,7 +1478,7 @@ sensitive loss) are worse. But no option clearly leaves the centre. The
 decisions in \cref{sec:training} are therefore based on stability, learning
 behaviour, effort and methodological reasons, as described in each subsection.
 Single notebook runs on \code{norm\_random}
-(\cref{fig:lr_curves,fig:normalized_targets}) did reach about \SI{23.6}{\percent}
+(\cref{fig:lr_curves}) did reach about \SI{23.6}{\percent}
 with a constant baseline of \SI{26.8}{\percent} on their test data. These runs,
 however, used an older data selection. With the current protocol (random data
 selection, five runs), such a learning effect is not visible. The older values
@@ -1389,12 +1511,11 @@ supports the central idea of this thesis, data-efficient personalization of a
 pretrained model. In addition, the recording conditions (background, light,
 glasses) affect the result more than the design of the session.
 
-\paragraph{Changes to the code.} The error metric was corrected. Baselines are
-computed on the same subset as the model. \code{exp.py} has new options for
-random subsets (\code{--sample-seed}) and a subject-disjoint validation set
-(\code{--val-size}). Full fine-tuning (\code{fc\_resnet}) can be included with
-\code{--include-resnet}. The personalization runs are reproducible (fixed seeds,
-frozen BatchNorm, feature cache, stored predictions, \code{personal\_exp.py}).
+\paragraph{Reproducibility.} Compared with earlier trials, the error metric
+was corrected, the baselines are computed on the same subsets as the model, and
+a subject-disjoint validation set was introduced. The personalization runs are
+reproducible with fixed seeds, frozen BatchNorm and stored predictions
+(\cref{sec:anhang_befehle}).
 
 % ==============================================================================
 \section{Summary of the Results}
@@ -1437,6 +1558,8 @@ accuracy measure that is available and comparable for all experiments.
     Cleaning (E1b) & remove WAIT frames & 15.88 & --- & vs.\ 16.72 on the same MOVE test frames; $-0.84$, not significant; WAIT frames themselves 37.7 (\cref{sec:cleaning}) \\
     Data split (E2) & sequential / two videos & 15.55 / 17.24 & 2--5\,s & random 13.85 is too optimistic; two videos significantly worse than sequential; calibration also works for a new video ($-$\SI{47}{\percent}) (\cref{sec:loading}) \\
     Session design (E3) & standard video & 15.29 / 21.52 & --- & random / sequential split; random jumps 23.45 / 32.80, corner-weighted 19.76 / 28.07; not significant and mixed; corner weighting does not lower the corner error (\cref{sec:design_performance}) \\
+    Smoothing (E4) & causal, $k=3$ (\SI{0.5}{\second}) & 28.10 & --- & sequential split; vs.\ 27.93 without smoothing, not significant; jumping (RMS-S2S) $-$\SI{40}{\percent}, significant; longer windows raise the error (\cref{sec:smoothing}) \\
+    Second person (E5) & person~B, 2~sessions & 34.04 / 32.33 & --- & random split; equal to the constant baseline (34.10 / 32.32), no gain; calibration of person~A on person~B worse than the centre (\cref{sec:person_b}) \\
     \bottomrule
   \end{tabularx}
 \end{table}

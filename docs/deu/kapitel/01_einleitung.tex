@@ -50,8 +50,9 @@ Die Arbeit beantwortet vier Forschungsfragen (FF):
         (trainierbare Schichten, Activation, Loss Function, Learning Rate,
         Batch Size)?
   \item[FF3] Wie beeinflussen die Aufteilung der Daten (zufällig, zeitlich,
-        zwei Videos) und die Gestaltung der Kalibrierung (Bewegung des Ziels,
-        Entfernen von Transition Frames) das Ergebnis?
+        zwei Videos), die Gestaltung der Kalibrierung (Bewegung des Ziels,
+        Entfernen von Transition Frames) und eine zeitliche Glättung der
+        Vorhersagen das Ergebnis?
   \item[FF4] Welchen Einfluss haben die Aufnahmebedingungen (Licht,
         Hintergrund, Brille, Dauer, Gerät bzw.\ Webcam)?
 \end{description}
@@ -60,9 +61,9 @@ Die Arbeit beantwortet vier Forschungsfragen (FF):
 \label{sec:beitrag}
 Die Arbeit liefert folgende Beiträge:
 \begin{itemize}
-  \item \textbf{Eigene Aufnahmen:} 27 Kalibriersitzungen mit zwei
-        Laptop-Webcams, davon 18 ausgewertet. Alle Aufnahmen stammen von einer
-        Person (dem Autor). Die Sitzungen unterscheiden sich in der
+  \item \textbf{Eigene Aufnahmen:} 27 Kalibriersitzungen von Person~A (dem
+        Autor) mit zwei Laptop-Webcams, davon 18 ausgewertet, und zwei
+        Sitzungen einer zweiten Person (Person~B) als Vergleich. Die Sitzungen unterscheiden sich in der
         Bewegung des Ziels, im Licht, im Hintergrund, in der Brille und in der
         Dauer. Die neueste Generation speichert für jedes
         Bild die Phase des Ziels (\code{WAIT} oder \code{MOVE}).
@@ -73,8 +74,9 @@ Die Arbeit liefert folgende Beiträge:
         gefunden und behoben. Baselines werden immer auf denselben Daten wie
         das Modell berechnet.
   \item \textbf{Systematische Studie:} Hyperparameter mit fünf Wiederholungen
-        und Confidence Intervals, räumliche Analyse des Fehlers sowie ein
-        Vergleich von Datenaufteilungen und Kalibriergestaltungen.
+        und Confidence Intervals, räumliche Analyse des Fehlers, ein
+        Vergleich von Datenaufteilungen und Kalibriergestaltungen sowie eine
+        Untersuchung der zeitlichen Glättung der Vorhersagen.
   \item \textbf{Web-Demo:} Eine Demo im Browser zeigt die Personalisierung
         live: Kalibrierung, Blickverfolgung und Auswertung (Kapitel~6).
 \end{itemize}

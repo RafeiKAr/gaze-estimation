@@ -18,9 +18,11 @@ however, the gain stays large (\SI{46}{\percent}) and even holds for a second
 recording (\SI{47}{\percent} reduction, \cref{sec:loading}). With a random
 split, the error drops to \SI{19.79}{\percent}, that is, by about one third,
 and the best session reaches \SI{10.5}{\percent} (\cref{sec:sessions_results}).
-This split, however, is too optimistic.
-\emph{Answer:} a short personalization helps clearly, but only under good
-recording conditions. The random split overestimates the benefit.
+This split, however, is too optimistic. For person~B, personalization brought
+no gain in either session, not even with a random split (\cref{sec:person_b}).
+\emph{Answer:} a short personalization can help clearly, but only under good
+recording conditions and not for every person. The random split overestimates
+the benefit.
 
 \paragraph{RQ2: Which training setting is suitable?}
 On GazeCapture, most settings do not differ significantly, because all models
@@ -32,15 +34,20 @@ sigmoid, L1 loss, learning rate $10^{-4}$ and batch size 32. The choice is based
 mainly on stability and effort; for the learning rate also on the lowest error
 in the first test.
 
-\paragraph{RQ3: What is the role of data split and calibration?}
+\paragraph{RQ3: What is the role of data split, calibration and smoothing?}
 The split is very important. The random split is too optimistic, because almost
 identical neighbouring frames end up in training and test. The smooth movement of
 the target (Gen~1) covers the screen best and had the lowest error. Jumps create
 frames with wrong labels. Removing these WAIT frames improves the result
 slightly (\num{0.84} percentage points, not significant). More labels in the
-corners do not lower the corner error. \emph{Answer:} a short, smooth movement
+corners do not lower the corner error. A moving average over the predictions
+makes them much calmer (RMS-S2S $-$\SI{40}{\percent} at $k=3$), but does not
+improve the accuracy; longer windows make it worse because of the lag
+(\cref{sec:smoothing}). \emph{Answer:} a short, smooth movement
 across the whole screen is best. Jumps should be logged so that transition frames
-can be removed. Evaluation should always use a temporal split.
+can be removed. Evaluation should always use a temporal split. A short moving average (about
+\SI{0.5}{\second}) is suitable for a calm display, but does not replace a
+better calibration.
 
 \paragraph{RQ4: What is the influence of the recording conditions?}
 The strongest factor is the background: a busy background raises the error by 6
@@ -65,6 +72,10 @@ Some results fit the literature well:
   \item \textbf{The evaluation protocol decides.} Similar to the difference
         between \code{norm\_random} and \code{norm\_subject}, random splits
         overestimate the performance (\cref{subsec:norm_subject}).
+  \item \textbf{Smoothing improves precision, not accuracy.} This matches the
+        distinction by Niehorster et al.~\cite{niehorster2026quality}: a moving
+        average clearly reduces the scatter from frame to frame, but the
+        systematic error stays almost the same (\cref{sec:smoothing}).
   \item \textbf{Wrong labels have a small effect.} DMRF \cite{jiang2026dmrf} also
         lowers the error only a little ($3.92^\circ \rightarrow 3.85^\circ$).
         Here, removing the WAIT frames gives \num{0.84} percentage points;
@@ -81,9 +92,10 @@ literature because of the different metrics (\cref{sec:vergleich}).
 \section{Limitations}
 \label{sec:grenzen}
 \begin{itemize}
-  \item \textbf{One person:} all own recordings come from one person (the
-        author), recorded with two devices. The results therefore do not
-        automatically hold for other persons.
+  \item \textbf{Few persons:} the 18 evaluated sessions come from one person
+        (the author). From a second person there are only two sessions, and for
+        her the personalization did not work. The reason was not examined. The
+        results therefore do not simply transfer to other persons.
   \item \textbf{Few sessions and mixed conditions:} 18 sessions are not enough
         for reliable statements about single factors. Design, light, background
         and glasses often change at the same time.
@@ -102,6 +114,9 @@ literature because of the different metrics (\cref{sec:vergleich}).
         correction for multiple comparisons (for example Bonferroni). Close
         results such as $p=0.032$ (L1 versus the sensitive loss) should
         therefore be read with care.
+  \item \textbf{Smoothing only afterwards:} the moving average was evaluated
+        on stored predictions of the sequential split (mostly one seed) and of
+        the two videos. For fixations, there is only a single run of the demo.
   \item \textbf{Metric:} the diagonal error is not directly comparable with
         angular errors or centimetres from the literature.
 \end{itemize}

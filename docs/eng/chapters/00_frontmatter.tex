@@ -18,11 +18,19 @@ and environments differ strongly. This thesis investigates how a pretrained
 vision model can be adapted to a single person with only a small amount of
 calibration data.
 
-A ResNet-18 pretrained on ImageNet serves as a frozen feature extractor. Only a
-small regression head is trained: first on the GazeCapture dataset (base model)
-and then on own webcam recordings from 18 sessions of one person
-(personalization). Accuracy is measured with the diagonal error, i.e.\ the
-error in percent of the screen diagonal.
+A ResNet-18 pretrained on ImageNet serves as the feature extractor. It is small
+enough for a CPU, and its general image features are well established; it is
+therefore also a common backbone in gaze estimation. The backbone stays frozen,
+and only a small regression head is trained. This keeps the number of trainable
+parameters low, which reduces the risk of overfitting with few calibration
+images. In addition, the features of each image are computed only once, so a
+training run takes only seconds. The head is first trained on the GazeCapture
+dataset (base model) and then adapted with own webcam recordings from 18
+sessions of one person. This personalization is needed because eye shape, head
+pose, camera and screen differ from person to person, and a generic model does
+not compensate for these differences. A few minutes of personal data are
+enough, instead of a large dataset of one's own. Accuracy is measured with the
+diagonal error, i.e.\ the error in percent of the screen diagonal.
 
 On the own recordings, the base model is not better than a constant prediction
 of the screen centre (30.6\,\% versus 30.3\,\%); it therefore mainly serves as
@@ -33,14 +41,16 @@ recording conditions the gain is much larger (46 to 47\,\%) and also holds for
 a new recording. With a random split of the frames the error drops to
 19.8\,\% (about one third). This value is too optimistic, however, because
 almost identical neighbouring frames end up in training and test. One training
-run takes only a few seconds on a CPU. Background and lighting have a larger influence than the design
-of the calibration. Removing wrongly labelled frames after target jumps
+run takes only a few seconds on a CPU. A short moving average makes the
+predictions much calmer, but does not improve the accuracy. Background and
+lighting have a larger influence than the design of the calibration. Removing wrongly labelled frames after target jumps
 improves the result only slightly.
 
 The results show that data-efficient personalization is possible with simple
-means. Its benefit, however, must be assessed with a realistic data split. All
-recordings come from one person, so the results hold for this person only at
-first.
+means. Its benefit, however, must be assessed with a realistic data split. In
+addition, two sessions of a second person were recorded. For her,
+personalization brought no gain, and a calibration of the first person did not
+transfer to her. The benefit therefore depends strongly on the person.
 
 \Schlagwoerter{Keywords}{eye tracking, gaze estimation, webcam,
 personalization, transfer learning, ResNet-18, GazeCapture}
@@ -56,27 +66,41 @@ Kameras und Umgebungen stark unterscheiden. Diese Arbeit untersucht, wie sich
 ein vortrainiertes Bildverarbeitungsmodell mit wenigen Kalibrierungsdaten an
 eine einzelne Person anpassen lässt.
 
-Als Merkmalsextraktor dient ein auf ImageNet vortrainiertes ResNet-18, das
-eingefroren bleibt. Trainiert wird nur ein kleiner Regressionskopf: zuerst auf
-dem Datensatz GazeCapture (Basismodell) und danach mit eigenen
-Webcam-Aufnahmen aus 18 Sitzungen einer Person (Personalisierung). Als
+Als Feature Extractor dient ein auf ImageNet vortrainiertes ResNet-18. Es ist
+klein genug für eine CPU, und seine allgemeinen Bild-Features sind gut erprobt;
+deshalb wird es auch in der Blickschätzung häufig als Backbone verwendet. Der
+Backbone bleibt eingefroren, und trainiert wird nur ein kleiner Regression
+Head. So gibt es nur wenige trainierbare Parameter, was die Gefahr von
+Overfitting bei wenigen Kalibrierbildern verringert. Außerdem werden die
+Features jedes Bildes nur einmal berechnet, und ein Training dauert nur
+Sekunden. Der Head wird zuerst auf dem Datensatz GazeCapture trainiert
+(Basismodell) und danach mit eigenen Webcam-Aufnahmen aus 18 Sitzungen einer
+Person angepasst. Diese Personalisierung ist nötig, weil sich Augenform,
+Kopfhaltung, Kamera und Bildschirm von Person zu Person unterscheiden und ein
+allgemeines Modell diese Unterschiede nicht ausgleicht. Dafür genügen wenige
+Minuten persönlicher Daten statt eines großen eigenen Datensatzes. Als
 Fehlermaß dient der Diagonalfehler, also der Fehler in Prozent der
 Bildschirmdiagonale.
 
 Auf den eigenen Aufnahmen ist das Basismodell nicht besser als eine konstante
-Schätzung der Bildschirmmitte (30,6\,\% gegenüber 30,3\,\%). Die
-Personalisierung senkt den Fehler auf 19,8\,\%, also um etwa ein Drittel. Ein
-Trainingslauf dauert auf einer CPU nur wenige Sekunden. Bei einer
-realistischen, zeitlichen Aufteilung der Daten ist der Gewinn kleiner (etwa
-12\,\% gegenüber der konstanten Schätzung). In Sitzungen mit guten
-Aufnahmebedingungen bleibt er jedoch deutlich und überträgt sich auch auf eine
-neue Aufnahme. Hintergrund und Beleuchtung haben einen größeren Einfluss als
-die Gestaltung der Kalibrierung. Das Entfernen falsch gelabelter Bilder nach
+Schätzung der Bildschirmmitte (30,6\,\% gegenüber 30,3\,\%); es dient daher
+vor allem als Startpunkt. Bei einer realistischen, zeitlichen Aufteilung der
+Daten (Training auf dem Anfang, Test auf dem Ende einer Aufnahme) senkt die
+Personalisierung den Fehler von 31,8\,\% auf 27,9\,\%, also um etwa 12\,\%.
+In Sitzungen mit guten Aufnahmebedingungen ist der Gewinn deutlich größer (46
+bis 47\,\%) und gilt auch für eine neue Aufnahme. Bei einer zufälligen
+Aufteilung der Bilder sinkt der Fehler auf 19,8\,\% (etwa ein Drittel). Dieser
+Wert ist aber zu optimistisch, weil fast gleiche Nachbarbilder in Training und
+Test liegen. Ein Trainingslauf dauert auf einer CPU nur wenige Sekunden. Ein kurzer Moving
+Average macht die Vorhersagen deutlich ruhiger, verbessert die Genauigkeit aber
+nicht. Hintergrund und Beleuchtung haben einen größeren Einfluss als die
+Gestaltung der Kalibrierung. Das Entfernen falsch gelabelter Bilder nach
 Zielsprüngen verbessert das Ergebnis nur wenig.
 
 Die Ergebnisse zeigen: Eine dateneffiziente Personalisierung ist mit einfachen
 Mitteln möglich. Ihr Nutzen muss aber mit einer realistischen Aufteilung der
-Daten bewertet werden.
+Daten bewertet werden. Alle Aufnahmen stammen von einer Person; die Ergebnisse
+gelten daher zunächst nur für diese Person.
 
 \Schlagwoerter{Schlagwörter}{Eye-Tracking, Blickschätzung, Webcam,
 Personalisierung, Transfer Learning, ResNet-18, GazeCapture}

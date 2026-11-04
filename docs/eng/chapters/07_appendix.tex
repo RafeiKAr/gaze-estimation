@@ -5,6 +5,31 @@
 \chapter{Appendix}
 \label{ch:anhang}
 
+\section{Structure of the Code}
+\label{sec:anhang_code}
+The code is written in Python with PyTorch and torchvision. The most important
+parts are:
+\begin{itemize}[nosep]
+  \item \code{main.py}: loads GazeCapture, normalizes the targets and creates
+        the splits;
+  \item \code{model.py}, \code{dataset.py}: model, losses, training, data
+        loading and stored features;
+  \item \code{metrics.py}: diagonal error and baselines (one single source for
+        all scripts);
+  \item \code{exp.py}: hyperparameter study with five repeats;
+  \item \code{train\_base.py}, \code{personal\_exp.py}: base models and
+        personalization (E0--E3);
+  \item \code{moving\_average.py}: temporal smoothing of the stored
+        predictions (E4);
+  \item \code{session\_design.py}: coverage, transition frames and cleaned
+        labels;
+  \item \code{spatial\_analysis.py}, \code{plot\_targets.py}: figures;
+  \item \code{auswertung.py}: creates the tables from the result files;
+  \item notebook \code{notebooks/Masterarbeit.ipynb}: runs all experiments and
+        creates tables and figures;
+  \item \code{demo/}: web demo (server and browser interface).
+\end{itemize}
+
 \section{Commands to Repeat the Experiments}
 \label{sec:anhang_befehle}
 All commands are run in the main folder of the project (see also
@@ -39,6 +64,11 @@ python personal_exp.py --sessions 21 22 --split sequential --seeds 42 43 44
 python personal_exp.py --split two_videos --pairs 21:22,22:21 --seeds 42 43 44
 python personal_exp.py --sessions all --split sequential
 python personal_exp.py --summary
+\end{verbatim}
+
+\paragraph{Temporal smoothing (E4).}
+\begin{verbatim}
+python moving_average.py
 \end{verbatim}
 
 \paragraph{Session design and cleaned labels.}

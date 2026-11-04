@@ -47,7 +47,8 @@ The thesis answers four research questions (RQ):
         size)?
   \item[RQ3] How do the data split (random, temporal, two videos) and the design
         of the calibration (movement of the target, removal of transition
-        frames) affect the result?
+        frames) and a temporal smoothing of the predictions affect the
+        result?
   \item[RQ4] What is the influence of the recording conditions (light,
         background, glasses, length, device or webcam)?
 \end{description}
@@ -56,9 +57,9 @@ The thesis answers four research questions (RQ):
 \label{sec:beitrag}
 The thesis makes the following contributions:
 \begin{itemize}
-  \item \textbf{Own recordings:} 27 calibration sessions with two laptop
-        webcams, 18 of them evaluated. All recordings come from one person
-        (the author). The sessions differ in the movement of the target,
+  \item \textbf{Own recordings:} 27 calibration sessions of person~A (the
+        author) with two laptop webcams, 18 of them evaluated, and two sessions
+        of a second person (person~B) for comparison. The sessions differ in the movement of the target,
         light, background, glasses and length. The newest
         generation stores the phase of the target for every frame (\code{WAIT}
         or \code{MOVE}).
@@ -69,8 +70,9 @@ The thesis makes the following contributions:
         and fixed. Baselines are always computed on the same data as the
         model.
   \item \textbf{Systematic study:} hyperparameters with five repeats and
-        confidence intervals, a spatial analysis of the error, and a comparison
-        of data splits and calibration designs.
+        confidence intervals, a spatial analysis of the error, a comparison
+        of data splits and calibration designs, and a study of the temporal
+        smoothing of the predictions.
   \item \textbf{Web demo:} a demo in the browser shows personalization live:
         calibration, gaze tracking and evaluation (Chapter~6).
 \end{itemize}
