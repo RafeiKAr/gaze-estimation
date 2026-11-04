@@ -5,6 +5,9 @@ Date/Time:           2026-11-04 22:13:57
 Recording Duration:  120 seconds (3600 frames @ 30 FPS)
 Expected Segments:   24 (each 5.0s = 0.5s wait + 4.5s move)
 
+Aufnaheme-Bedinungen:
+Person B, ohne Brille, hell, Hintergrund ruhig und weiß 
+
 Startpoint Distribution:
   - Corner probability: 90%
   - Corner region size: 10% width × 10% height per corner (4 corners = 4% screen area)
