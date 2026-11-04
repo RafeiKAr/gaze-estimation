@@ -1449,13 +1449,42 @@ centre: 24$\to$29 \SI{35.15}{\percent} versus \SI{33.93}{\percent} and
 direction (29$\to$24, 28$\to$26), the model of person~B stays close to the
 centre. A calibration is therefore tied to the person.
 
-\paragraph{Possible causes.} Why personalization does not work for person~B was
-not examined. The input is an obvious candidate: the model uses the whole camera
+\paragraph{Cause: the input.} The input is an obvious candidate: the model uses the whole camera
 image, in which the eyes are only a few pixels large. Part of the gain for
 person~A probably comes from small head movements that accompany the gaze. If a
 person keeps the head stiller, this signal is missing. This fits the suggestion
-to use eye or face crops (\cref{sec:ausblick}). With two sessions, however, this
-is only a conjecture.
+to use eye or face crops (\cref{sec:ausblick}). A run of the web demo with
+person~B supports this explanation (\cref{tab:demo_persons}). The demo uses an
+eye crop and spatial features. With it, the error of person~B on the validation
+data of the calibration fell from \SI{26.9}{\percent} (base model) to
+\SI{9.7}{\percent}, similar to person~A (\SI{26.0}{\percent}
+$\rightarrow$ \SI{6.7}{\percent}). The five-point test, at
+\SI{20.8}{\percent}, was also below the constant estimate
+(\SI{26.6}{\percent}). In addition, the demo chose no weight for the head
+position for person~B, but did for person~A; this fits a stiller head. The demo,
+however, differs from the experiments in several points (crop, spatial
+features, ridge regression, different calibration movement), and there is only
+one run per person. The comparison is therefore a strong hint, but no proof.
+
+\begin{table}[htbp]
+  \centering
+  \caption[Web demo with both persons]{Web demo with eye crop, one run each (device~A,
+           \SI{60}{\second} calibration). Error in \si{\percent} of the screen
+           diagonal; validation data: 2 of 10 time blocks of the calibration,
+           not used for training.}
+  \label{tab:demo_persons}
+  \small
+  \begin{tabular}{l rrr rl}
+    \toprule
+    & \multicolumn{3}{c}{Validation data of the calibration} & \multicolumn{2}{c}{Five-point test} \\
+    \cmidrule(lr){2-4}\cmidrule(lr){5-6}
+    Person & Constant & Base model & Personalized & Error & Measurements \\
+    \midrule
+    A & 28.3 & 26.0 & 6.7 & 11.8 & 78 \\
+    B & 26.6 & 26.9 & 9.7 & 20.8 & 35 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \paragraph{Smoothing.} Because the predictions of person~B are almost constant,
 the moving average changes neither the error nor the stability noticeably
@@ -1559,7 +1588,7 @@ accuracy measure that is available and comparable for all experiments.
     Data split (E2) & sequential / two videos & 15.55 / 17.24 & 2--5\,s & random 13.85 is too optimistic; two videos significantly worse than sequential; calibration also works for a new video ($-$\SI{47}{\percent}) (\cref{sec:loading}) \\
     Session design (E3) & standard video & 15.29 / 21.52 & --- & random / sequential split; random jumps 23.45 / 32.80, corner-weighted 19.76 / 28.07; not significant and mixed; corner weighting does not lower the corner error (\cref{sec:design_performance}) \\
     Smoothing (E4) & causal, $k=3$ (\SI{0.5}{\second}) & 28.10 & --- & sequential split; vs.\ 27.93 without smoothing, not significant; jumping (RMS-S2S) $-$\SI{40}{\percent}, significant; longer windows raise the error (\cref{sec:smoothing}) \\
-    Second person (E5) & person~B, 2~sessions & 34.04 / 32.33 & --- & random split; equal to the constant baseline (34.10 / 32.32), no gain; calibration of person~A on person~B worse than the centre (\cref{sec:person_b}) \\
+    Second person (E5) & person~B, 2~sessions & 34.04 / 32.33 & --- & random split; equal to the constant baseline (34.10 / 32.32), no gain; calibration of person~A on person~B worse than the centre; with eye crop (demo) 9.7 instead of 26.9 (\cref{sec:person_b}) \\
     \bottomrule
   \end{tabularx}
 \end{table}

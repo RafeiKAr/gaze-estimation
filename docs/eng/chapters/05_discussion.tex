@@ -18,11 +18,13 @@ however, the gain stays large (\SI{46}{\percent}) and even holds for a second
 recording (\SI{47}{\percent} reduction, \cref{sec:loading}). With a random
 split, the error drops to \SI{19.79}{\percent}, that is, by about one third,
 and the best session reaches \SI{10.5}{\percent} (\cref{sec:sessions_results}).
-This split, however, is too optimistic. For person~B, personalization brought
-no gain in either session, not even with a random split (\cref{sec:person_b}).
+This split, however, is too optimistic. For person~B, personalization with the
+whole camera image brought no gain in either session, not even with a random
+split. With the eye crop of the web demo, however, her error fell from
+\SI{26.9}{\percent} to \SI{9.7}{\percent} (\cref{sec:person_b}).
 \emph{Answer:} a short personalization can help clearly, but only under good
-recording conditions and not for every person. The random split overestimates
-the benefit.
+recording conditions and with an input that captures the eyes well. The random
+split overestimates the benefit.
 
 \paragraph{RQ2: Which training setting is suitable?}
 On GazeCapture, most settings do not differ significantly, because all models
@@ -93,9 +95,10 @@ literature because of the different metrics (\cref{sec:vergleich}).
 \label{sec:grenzen}
 \begin{itemize}
   \item \textbf{Few persons:} the 18 evaluated sessions come from one person
-        (the author). From a second person there are only two sessions, and for
-        her the personalization did not work. The reason was not examined. The
-        results therefore do not simply transfer to other persons.
+        (the author). From a second person there are only two sessions and one
+        run of the demo. That the eye crop explains the difference is a hint
+        from this single run and was not examined systematically. The results
+        therefore do not simply transfer to other persons.
   \item \textbf{Few sessions and mixed conditions:} 18 sessions are not enough
         for reliable statements about single factors. Design, light, background
         and glasses often change at the same time.

@@ -30,9 +30,11 @@ The most important results are:
         was best.
   \item Frames directly after a jump of the target have wrong labels. Removing
         them helps a little, but costs nothing.
-  \item For a second person (two sessions), personalization brought no gain. A
-        calibration is also tied to the person: the calibration of person~A was
-        worse than the screen centre on person~B.
+  \item For a second person, personalization with the whole camera image brought
+        no gain, but with the eye crop of the demo it did
+        (\SI{26.9}{\percent} $\rightarrow$ \SI{9.7}{\percent}). The input is
+        therefore decisive. A calibration is also tied to the person: the
+        calibration of person~A was worse than the screen centre on person~B.
   \item A short moving average (about \SI{0.5}{\second}) makes the predictions
         about \SI{40}{\percent} calmer without a measurable loss of accuracy.
         Longer windows raise the error, because the prediction lags behind the
@@ -41,18 +43,20 @@ The most important results are:
 \end{itemize}
 Overall, the thesis shows: data-efficient personalization works with simple
 means. But the accuracy depends strongly on the recording conditions, and it must be
-assessed with a realistic data split. The benefit also depends on the person:
-for a second person, the same method brought no gain, and a calibration of
-another person was worse than the screen centre. A study with more persons has
-to show how often this happens and why.
+assessed with a realistic data split. The benefit also depends on the person
+and on the input: for a second person, personalization only worked with an eye
+crop, and a calibration of another person was worse than the screen centre. A
+study with more persons has to show how general this is.
 
 \section{Outlook}
 \label{sec:ausblick}
 Several next steps are obvious:
 \begin{itemize}
   \item \textbf{Eye or face crops as input.} In the whole camera image, the eyes
-        are very small. A crop should give the model much more gaze
-        information.
+        are very small. A crop gives the model much more gaze information; the
+        demo run with person~B strongly supports this (\cref{sec:person_b}).
+        This step should be the first to be tested systematically with all
+        sessions.
   \item \textbf{Other pretrained models.} DINOv2, CLIP, MAE or UniGaze instead of
         ResNet-18, each with a frozen backbone and a small head.
   \item \textbf{Lightweight adaptation of the backbone.} Adapters or LoRA as a
@@ -81,11 +85,17 @@ when which cell was looked at. The demo already uses some ideas from the
 outlook: an eye crop, spatial features of the ResNet-18, a ridge regression and
 the head position as an extra feature. A short test with five points
 (\SI{3}{\second} each) after the calibration measures the error on new frames.
-In one run of the new version, the error on the validation data of the
-calibration was \SI{19.1}{\percent}, compared with \SI{25.4}{\percent} for
-the base model without adaptation. During the whole tracking, the base model
-pointed only at the centre cell, while the personalized model spread the gaze
-over eight of the nine cells. With the earlier version of the demo (fixed snake
+In two runs of the new version (person~A), the error on the
+validation data of the calibration was \SI{19.1}{\percent} and
+\SI{6.7}{\percent}; the base model without adaptation reached
+\SI{25.4}{\percent} and \SI{26.0}{\percent}, and the constant estimate
+\SI{28.3}{\percent} in the second run. In the second run, the five-point test
+reached \SI{11.8}{\percent} (78 measurements); the best method there was the
+ridge regression on spatial features, and training took \SI{6.1}{\second}. In
+both runs, the base model pointed only at the centre cell during the whole
+tracking, while the personalized model spread the gaze over eight and all nine
+cells. A run with person~B reached \SI{9.7}{\percent} on the validation data
+and \SI{20.8}{\percent} in the five-point test (\cref{tab:demo_persons}). With the earlier version of the demo (fixed snake
 path), the error in the five-point test was between about \SI{17.6}{\percent} and
 \SI{25.2}{\percent} in several single tests (last test: \SI{19.0}{\percent});
 a constant estimate reaches about \SI{23}{\percent} on the calibration data. In

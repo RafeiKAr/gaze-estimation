@@ -1505,13 +1505,44 @@ die Bildschirmmitte: 24$\to$29 \SI{35,15}{\percent} gegenüber
 \SI{33,45}{\percent}. In umgekehrter Richtung (29$\to$24, 28$\to$26) bleibt das
 Modell von Person~B nahe der Mitte. Eine Kalibrierung ist also personengebunden.
 
-\paragraph{Mögliche Ursachen.} Warum die Personalisierung bei Person~B nicht
-funktioniert, wurde nicht geprüft. Naheliegend ist die Eingabe: Das Modell nutzt
+\paragraph{Ursache: die Eingabe.} Naheliegend ist die Eingabe: Das Modell nutzt
 das ganze Kamerabild, in dem die Augen nur wenige Pixel groß sind. Ein Teil des
 Gewinns bei Person~A stammt vermutlich aus kleinen Kopfbewegungen, die den Blick
 begleiten. Hält eine Person den Kopf ruhiger, fehlt dieses Signal. Das passt zu
 dem Vorschlag, Augen- oder Gesichtsausschnitte zu verwenden
-(\cref{sec:ausblick}). Bei zwei Sitzungen ist das aber nur eine Vermutung.
+(\cref{sec:ausblick}). Ein Durchlauf der Web-Demo mit Person~B stützt diese
+Erklärung (\cref{tab:demo_persons}). Die Demo verwendet einen Augenausschnitt
+und räumliche Features. Damit sank der Fehler auf den Prüfdaten der
+Kalibrierung bei Person~B von \SI{26,9}{\percent} (Basismodell) auf
+\SI{9,7}{\percent}, ähnlich wie bei Person~A (\SI{26,0}{\percent}
+$\rightarrow$ \SI{6,7}{\percent}). Auch der Test mit fünf Punkten lag mit
+\SI{20,8}{\percent} unter der konstanten Schätzung (\SI{26,6}{\percent}).
+Außerdem wählte die Demo für Person~B kein Gewicht für die Kopfposition, für
+Person~A dagegen schon; das passt zu einem ruhigeren Kopf. Die Demo unterscheidet
+sich allerdings in mehreren Punkten von den Experimenten (Ausschnitt,
+räumliche Features, Ridge Regression, andere Kalibrierbewegung), und es gibt
+pro Person nur einen Durchlauf. Der Vergleich ist daher ein starker Hinweis,
+aber kein Beweis.
+
+\begin{table}[htbp]
+  \centering
+  \caption[Web-Demo mit beiden Personen]{Web-Demo mit Augenausschnitt, je ein Durchlauf (Gerät~A,
+           Kalibrierung \SI{60}{\second}). Fehler in \si{\percent} der
+           Bildschirmdiagonale; Prüfdaten: 2 von 10 Zeitabschnitten der
+           Kalibrierung, nicht im Training.}
+  \label{tab:demo_persons}
+  \small
+  \begin{tabular}{l rrr rl}
+    \toprule
+    & \multicolumn{3}{c}{Prüfdaten der Kalibrierung} & \multicolumn{2}{c}{Test mit 5 Punkten} \\
+    \cmidrule(lr){2-4}\cmidrule(lr){5-6}
+    Person & Konstant & Basismodell & Personalisiert & Fehler & Messungen \\
+    \midrule
+    A & 28,3 & 26,0 & 6,7 & 11,8 & 78 \\
+    B & 26,6 & 26,9 & 9,7 & 20,8 & 35 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \paragraph{Glättung.} Weil die Vorhersagen von Person~B fast konstant sind,
 ändert der Moving Average dort weder den Fehler noch die Stabilität merklich
@@ -1624,7 +1655,7 @@ alle Experimente vorhanden und vergleichbar ist.
     Aufteilung der Daten (E2) & sequenziell / zwei Videos & 15,55 / 17,24 & 2--5\,s & zufällig 13,85 ist zu optimistisch; zwei Videos signifikant schlechter als sequenziell; Kalibrierung funktioniert auch für ein neues Video ($-$\SI{47}{\percent}) (\cref{sec:loading}) \\
     Gestaltung der Sitzung (E3) & Standardvideo & 15,29 / 21,52 & --- & zufälliger / sequenzieller Split; zufällige Sprünge 23,45 / 32,80, Ecken-gewichtet 19,76 / 28,07; nicht signifikant und vermischt; Ecken-Gewichtung senkt den Eckfehler nicht (\cref{sec:design_performance}) \\
     Glättung (E4) & kausal, $k=3$ (\SI{0,5}{\second}) & 28,10 & --- & sequenzieller Split; vs.\ 27,93 ohne Glättung, nicht signifikant; Springen (RMS-S2S) $-$\SI{40}{\percent}, signifikant; längere Fenster erhöhen den Fehler (\cref{sec:smoothing}) \\
-    Zweite Person (E5) & Person~B, 2~Sitzungen & 34,04 / 32,33 & --- & zufälliger Split; gleich der Konstant-Baseline (34,10 / 32,32), kein Gewinn; Kalibrierung von Person~A auf Person~B schlechter als die Mitte (\cref{sec:person_b}) \\
+    Zweite Person (E5) & Person~B, 2~Sitzungen & 34,04 / 32,33 & --- & zufälliger Split; gleich der Konstant-Baseline (34,10 / 32,32), kein Gewinn; Kalibrierung von Person~A auf Person~B schlechter als die Mitte; mit Augenausschnitt (Demo) 9,7 statt 26,9 (\cref{sec:person_b}) \\
     \bottomrule
   \end{tabularx}
 \end{table}

@@ -31,10 +31,12 @@ Die wichtigsten Ergebnisse sind:
         Bildschirm war am besten.
   \item Bilder direkt nach einem Sprung des Ziels haben falsche Labels. Sie zu
         entfernen hilft wenig, kostet aber nichts.
-  \item Bei einer zweiten Person (zwei Sitzungen) brachte die Personalisierung
-        keinen Gewinn. Eine Kalibrierung ist außerdem personengebunden: Die
-        Kalibrierung von Person~A war auf Person~B schlechter als die
-        Bildschirmmitte.
+  \item Bei einer zweiten Person brachte die Personalisierung mit dem ganzen
+        Kamerabild keinen Gewinn, mit dem Augenausschnitt der Demo dagegen
+        schon (\SI{26,9}{\percent} $\rightarrow$ \SI{9,7}{\percent}). Die
+        Eingabe ist also entscheidend. Eine Kalibrierung ist außerdem
+        personengebunden: Die Kalibrierung von Person~A war auf Person~B
+        schlechter als die Bildschirmmitte.
   \item Ein kurzer Moving Average (etwa \SI{0,5}{\second}) macht die
         Vorhersagen um etwa \SI{40}{\percent} ruhiger, ohne messbaren Verlust
         an Genauigkeit. Längere Fenster erhöhen den Fehler, weil die
@@ -44,18 +46,21 @@ Die wichtigsten Ergebnisse sind:
 Insgesamt zeigt die Arbeit: Dateneffiziente Personalisierung funktioniert mit
 einfachen Mitteln. Die Genauigkeit hängt aber stark von den
 Aufnahmebedingungen ab, und man muss sie mit einer realistischen Aufteilung der
-Daten bewerten. Der Nutzen hängt außerdem von der Person ab: Bei einer zweiten
-Person brachte dasselbe Verfahren keinen Gewinn, und eine fremde Kalibrierung
-war schlechter als die Bildschirmmitte. Eine Studie mit mehr Personen muss
-zeigen, wie oft das vorkommt und woran es liegt.
+Daten bewerten. Der Nutzen hängt außerdem von der Person und von der Eingabe ab:
+Bei einer zweiten Person funktionierte die Personalisierung erst mit einem
+Augenausschnitt, und eine fremde Kalibrierung war schlechter als die
+Bildschirmmitte. Eine Studie mit mehr Personen muss zeigen, wie allgemein das
+gilt.
 
 \section{Ausblick}
 \label{sec:ausblick}
 Mehrere nächste Schritte liegen nahe:
 \begin{itemize}
   \item \textbf{Augen- oder Gesichtsausschnitte als Eingabe.} Im ganzen
-        Kamerabild sind die Augen sehr klein. Ein Ausschnitt sollte dem Modell
-        viel mehr Blickinformation geben.
+        Kamerabild sind die Augen sehr klein. Ein Ausschnitt gibt dem Modell
+        viel mehr Blickinformation; der Durchlauf der Demo mit Person~B spricht
+        stark dafür (\cref{sec:person_b}). Dieser Schritt sollte als Erstes
+        systematisch mit allen Sitzungen geprüft werden.
   \item \textbf{Andere vortrainierte Modelle.} DINOv2, CLIP, MAE oder UniGaze
         statt ResNet-18, jeweils mit eingefrorenem Backbone und kleinem Head.
   \item \textbf{Sparsame Anpassung des Backbones.} Adapter oder LoRA als
@@ -87,11 +92,18 @@ angeschaut wurde. Die Demo nutzt bereits einige Ideen aus dem Ausblick: einen
 Augenausschnitt, räumliche Features des ResNet-18, eine Ridge Regression und die
 Kopfposition als Zusatz-Feature. Ein kurzer Test mit fünf Punkten (je
 \SI{3}{\second}) nach der Kalibrierung misst den Fehler auf neuen Bildern. In
-einem Durchlauf der neuen Version lag der Fehler auf den Prüfdaten der
-Kalibrierung bei \SI{19,1}{\percent}, das Basismodell ohne Anpassung bei
-\SI{25,4}{\percent}. Das Basismodell zeigte während der ganzen
-Blickverfolgung nur auf das mittlere Feld, das personalisierte Modell verteilte
-den Blick auf acht der neun Felder. Mit der früheren Version der Demo (fester
+zwei Durchläufen der neuen Version (Person~A) lag der Fehler auf den
+Prüfdaten der Kalibrierung bei \SI{19,1}{\percent} bzw.\ \SI{6,7}{\percent};
+das Basismodell ohne Anpassung lag bei \SI{25,4}{\percent} bzw.\
+\SI{26,0}{\percent}, die konstante Schätzung im zweiten Durchlauf bei
+\SI{28,3}{\percent}. Im zweiten Durchlauf erreichte der Test mit fünf Punkten
+\SI{11,8}{\percent} (78 Messungen); am besten war dort die Ridge Regression auf
+räumlichen Features, und das Training dauerte \SI{6,1}{\second}. In beiden
+Durchläufen zeigte das Basismodell während der ganzen Blickverfolgung nur auf
+das mittlere Feld, das personalisierte Modell verteilte den Blick auf acht bzw.\
+alle neun Felder. Ein Durchlauf mit Person~B erreichte \SI{9,7}{\percent} auf
+den Prüfdaten und \SI{20,8}{\percent} im Test mit fünf Punkten
+(\cref{tab:demo_persons}). Mit der früheren Version der Demo (fester
 Schlangenweg) lag der Fehler im Test mit fünf Punkten in mehreren Einzeltests zwischen etwa \SI{17,6}{\percent} und
 \SI{25,2}{\percent} (letzter Test: \SI{19,0}{\percent}); eine konstante
 Schätzung erreicht auf den Kalibrierdaten etwa \SI{23}{\percent}. In einem
