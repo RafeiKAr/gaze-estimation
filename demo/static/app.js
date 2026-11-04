@@ -9,17 +9,18 @@
 "use strict";
 
 const CONFIG = {
-  calibSeconds: 60,       // Dauer der Kalibrierung (länger = langsamerer Punkt)
+  calibSeconds: 60,       // Dauer der Kalibrierung in Sekunden (45–60 sinnvoll)
+  speed: 0.10,            // Geschwindigkeit des Punktes: Anteil der Bildschirmdiagonale pro Sekunde
   countdown: 3,           // Sekunden Countdown vor der Kalibrierung
   labelsPerSecond: 5,     // Bilder pro Sekunde in der Kalibrierung (Server muss mitkommen)
   margin: 0.05,           // Abstand des Punktes zum Bildschirmrand (Anteil)
-  rows: 4,                // Zeilen der Schlangenlinie, danach gleich viele Spalten
-                          // (weniger Zeilen = kürzerer Weg = langsamerer Punkt)
+  rows: 4,                // nur Ersatzweg (Schlangenlinie), falls kein Zufallsweg alle Felder trifft
   camWidth: 640,          // Kamerabild, das an den Server geht
   camHeight: 480,
   jpegQuality: 0.8,
-  smoothing: 0.5,         // Glättung der Blickposition (0 = keine Bewegung, 1 = keine Glättung)
-  medianWindow: 3,        // Median über die letzten N Vorhersagen (mehr = ruhiger, aber mehr Verzögerung)
+  maSeconds: 0.5,         // Moving Average: Mittelwert der Vorhersagen der letzten 0,5 s (Kapitel 4.8)
+                          // (0 = aus; länger = ruhiger, aber der Punkt läuft dem Blick hinterher)
+  animEase: 0.5,          // nur Animation zwischen zwei Vorhersagen (keine Glättung der Daten)
   gridCols: 3,            // Felder des Bühnenlichts: 3 Spalten x 3 Zeilen
   gridRows: 3,            //   (in der Adresse änderbar, z. B. ?grid=7x5 für feinere Felder)
   minGlowPx: 40,          // kleinster Radius des Lichtflecks
@@ -29,6 +30,9 @@ const CONFIG = {
 const urlParams = new URLSearchParams(location.search);
 const urlCalib = Number(urlParams.get("calib"));
 if (urlCalib > 0) CONFIG.calibSeconds = urlCalib;
+// Zum Vergleich: ?ma=0 schaltet den Moving Average aus, ?ma=1 = Fenster 1 s
+const urlMa = urlParams.get("ma");
+if (urlMa !== null && Number(urlMa) >= 0) CONFIG.maSeconds = Number(urlMa);
 const urlRows = Number(urlParams.get("rows"));
 if (urlRows >= 2) CONFIG.rows = Math.round(urlRows);
 const urlGrid = /^(\d+)x(\d+)$/.exec(urlParams.get("grid") || "");
@@ -184,10 +188,78 @@ function drawGrid() {
 }
 
 // ---------------------------------------------------------------- Kalibrierpfad
-/* Schlangenlinie: erst waagerechte Zeilen von oben nach unten, dann senkrechte
- * Spalten von rechts nach links. Der Punkt bewegt sich mit konstanter Geschwindigkeit
- * und deckt so den ganzen Bildschirm inkl. Ränder und Ecken ab (wie Gen 1). */
+/* Zufallsweg ("Billard"): Der Punkt startet an einer zufälligen Stelle, fliegt in eine
+ * zufällige Richtung mit konstanter Geschwindigkeit und prallt an den Rändern ab
+ * (mit einer kleinen zufälligen Richtungsänderung). Ein Weg wird nur genommen, wenn er
+ * alle Felder eines 3x3-Rasters besucht; so bleibt die volle Abdeckung des Bildschirms
+ * erhalten, die in der Masterarbeit am besten war (Gen 1, Kapitel 4.7). */
 function buildPath() {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const path = randomBouncePath();
+    if (coversGrid(path, 3)) return path;
+  }
+  return snakePath();                         // Ersatz: fester Weg, deckt sicher alles ab
+}
+
+function withLengths(pts) {
+  // Länge in Pixeln (damit die Geschwindigkeit auf dem Bildschirm konstant ist)
+  const seg = [];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const len = Math.hypot((pts[i][0] - pts[i - 1][0]) * W(), (pts[i][1] - pts[i - 1][1]) * H());
+    seg.push(len); total += len;
+  }
+  return { pts, seg, total };
+}
+
+function randomBouncePath() {
+  const m = CONFIG.margin, w = W(), h = H();
+  const lo = [m * w, m * h], hi = [(1 - m) * w, (1 - m) * h];
+  const length = CONFIG.speed * Math.hypot(w, h) * CONFIG.calibSeconds;   // Weg in Pixeln
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  let p = [rnd(lo[0], hi[0]), rnd(lo[1], hi[1])];
+  // Startrichtung zufällig, aber nicht fast waagerecht oder senkrecht (sonst langweilig)
+  let ang;
+  do { ang = rnd(0, 2 * Math.PI); } while (Math.min(...[0, 1, 2, 3, 4].map((k) => Math.abs(ang - k * Math.PI / 2))) < 0.26);
+  let d = [Math.cos(ang), Math.sin(ang)];
+  const pts = [[p[0] / w, p[1] / h]];
+  let left = length;
+  while (left > 1e-6) {
+    // Entfernung bis zur nächsten Wand
+    let tHit = Infinity, axis = -1;
+    for (let a = 0; a < 2; a++) {
+      if (d[a] > 1e-9) { const t = (hi[a] - p[a]) / d[a]; if (t < tHit) { tHit = t; axis = a; } }
+      if (d[a] < -1e-9) { const t = (lo[a] - p[a]) / d[a]; if (t < tHit) { tHit = t; axis = a; } }
+    }
+    const step = Math.min(tHit, left);
+    p = [p[0] + d[0] * step, p[1] + d[1] * step];
+    pts.push([p[0] / w, p[1] / h]);
+    left -= step;
+    if (step === tHit) {                      // Abprallen + kleine zufällige Drehung (±15°)
+      d[axis] = -d[axis];
+      const r = rnd(-0.26, 0.26), c = Math.cos(r), s = Math.sin(r);
+      let nd = [d[0] * c - d[1] * s, d[0] * s + d[1] * c];
+      // nach der Drehung muss der Punkt weiter von der Wand weg fliegen
+      if ((axis === 0 && Math.sign(nd[0]) !== Math.sign(d[0])) || (axis === 1 && Math.sign(nd[1]) !== Math.sign(d[1]))) nd = d;
+      // nicht zu flach an der Wand entlang
+      if (Math.abs(nd[axis]) < 0.25) nd = d;
+      d = nd;
+    }
+  }
+  return withLengths(pts);
+}
+
+function coversGrid(path, n) {
+  const seen = new Set();
+  const steps = 400;
+  for (let i = 0; i <= steps; i++) {
+    const [x, y] = pointOnPath(path, i / steps);
+    seen.add(Math.min(n - 1, Math.floor(x * n)) * n + Math.min(n - 1, Math.floor(y * n)));
+  }
+  return seen.size === n * n;
+}
+
+function snakePath() {
   const m = CONFIG.margin, n = CONFIG.rows, pts = [];
   const lin = (i) => m + ((1 - 2 * m) * i) / (n - 1);
   for (let r = 0; r < n; r++) {
@@ -198,15 +270,7 @@ function buildPath() {
     const x = lin(c);
     if ((n - 1 - c) % 2 === 0) pts.push([x, 1 - m], [x, m]); else pts.push([x, m], [x, 1 - m]);
   }
-  // Länge in Pixeln (damit die Geschwindigkeit auf dem Bildschirm konstant ist)
-  const seg = [];
-  let total = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const dx = (pts[i][0] - pts[i - 1][0]) * W(), dy = (pts[i][1] - pts[i - 1][1]) * H();
-    const len = Math.hypot(dx, dy);
-    seg.push(len); total += len;
-  }
-  return { pts, seg, total };
+  return withLengths(pts);
 }
 
 function pointOnPath(path, frac) {
@@ -428,12 +492,21 @@ function currentErr() {
   return (v != null ? v : (state.calib.error_after || 20)) / 100;
 }
 const smooth = { px: null, py: null, bx: null, by: null };
-const recent = [];                                // letzte Rohwerte für den Median-Filter
-function filtered(p) {
-  recent.push(p); if (recent.length > CONFIG.medianWindow) recent.shift();
-  const med = (k) => { const s = recent.map((q) => q[k]).sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+/* Kausaler Moving Average (Kapitel 4.8 der Masterarbeit): Mittelwert aller Vorhersagen
+ * der letzten CONFIG.maSeconds Sekunden. Das Fenster ist in Sekunden angegeben, weil die
+ * Zahl der Vorhersagen pro Sekunde vom Rechner abhängt. */
+const recent = { personal: [], base: [] };        // {t, p} der letzten Vorhersagen
+function movingAverage(buf, p, t) {
+  buf.push({ t, p });
+  while (buf.length > 1 && t - buf[0].t > CONFIG.maSeconds * 1000) buf.shift();
+  if (CONFIG.maSeconds <= 0) { buf.splice(0, buf.length - 1); }
+  const n = buf.length;
+  return [buf.reduce((s, q) => s + q.p[0], 0) / n, buf.reduce((s, q) => s + q.p[1], 0) / n];
+}
+function filtered(p, t) {
+  const m = movingAverage(recent.personal, p, t);
   const b = state.bias || [0, 0];
-  return [Math.min(1, Math.max(0, med(0) - b[0])), Math.min(1, Math.max(0, med(1) - b[1]))];
+  return [Math.min(1, Math.max(0, m[0] - b[0])), Math.min(1, Math.max(0, m[1] - b[1]))];
 }
 const latest = { personal: null, base: null };
 
@@ -498,7 +571,7 @@ function drawTracking() {
     const y = (H() * i) / CONFIG.gridRows;
     sctx.beginPath(); sctx.moveTo(0, y); sctx.lineTo(W(), y); sctx.stroke();
   }
-  const a = CONFIG.smoothing;
+  const a = CONFIG.animEase;
   const lerp = (o, n) => (o === null ? n : o + a * (n - o));
   if (latest.personal) {
     smooth.px = lerp(smooth.px, latest.personal[0]); smooth.py = lerp(smooth.py, latest.personal[1]);
@@ -541,7 +614,7 @@ async function runTracking() {
   cellLight.fill(0);
   state.tracking = true;
   smooth.px = smooth.py = smooth.bx = smooth.by = null;
-  recent.length = 0;
+  recent.personal.length = 0; recent.base.length = 0;
   requestAnimationFrame(drawTracking);
   const t0 = performance.now() - (state.track.length ? state.track[state.track.length - 1].t * 1000 : 0);
 
@@ -554,11 +627,15 @@ async function runTracking() {
       next = grabFrame();
       if (!image) { await sleep(200); continue; }
       const r = await api("/api/predict", { sid: state.sid, image });
-      latest.base = r.base;
-      latest.personal = r.personal ? filtered(r.personal) : null;
+      const now = performance.now();
+      latest.base = r.base ? movingAverage(recent.base, r.base, now) : null;
+      latest.personal = r.personal ? filtered(r.personal, now) : null;
       if (latest.personal) {
-        state.track.push({ t: (performance.now() - t0) / 1000,
-          px: latest.personal[0], py: latest.personal[1], bx: r.base[0], by: r.base[1] });
+        // gespeichert werden geglättete (px, py) UND rohe Werte (rx, ry), damit man
+        // Glättung und Rohwerte später vergleichen kann
+        state.track.push({ t: (now - t0) / 1000,
+          px: latest.personal[0], py: latest.personal[1], rx: r.personal[0], ry: r.personal[1],
+          bx: r.base[0], by: r.base[1] });
       }
     } catch (e) {
       $("stage-center").textContent = `Verbindung unterbrochen: ${e.message}`;

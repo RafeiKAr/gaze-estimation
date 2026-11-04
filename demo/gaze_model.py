@@ -28,7 +28,13 @@ Unterschiede zu den Experimenten (für die Live-Webcam nötig):
     die räumlichen Merkmale behalten diese Information. Verwendet wird das
     Verfahren mit dem kleinsten Prüffehler; alle Werte stehen im Ergebnis.
 
+Basismodell:
+  Fehlt models/base_norm_subject.pt, wird die Datei beim Start einmal von Hugging Face
+  geladen (Repository HF_MODEL_REPO unten oder Umgebungsvariable GAZE_MODEL_REPO) und
+  in models/ gespeichert. Danach startet die Demo ohne Internet.
+
 Umgebungsvariablen:
+  GAZE_MODEL_REPO=<name>/<repo> Hugging-Face-Repository des Basismodells
   GAZE_CROP=eyes|face|none   Bildausschnitt (Standard eyes)
   GAZE_DEBUG=1               jedes 30. Kalibrierbild (Ausschnitt) und einen Bericht
                              calib_report.json in debug_frames/ speichern (nur lokal!)
@@ -50,6 +56,9 @@ from torchvision import transforms
 from torchvision.models import resnet18
 
 MODEL_FILE = Path(__file__).parent / "models" / "base_norm_subject.pt"
+# Hugging-Face-Repository mit dem Basismodell (mit GAZE_MODEL_REPO änderbar)
+HF_MODEL_REPO = os.environ.get("GAZE_MODEL_REPO", "RafeiKAr/demo_model")
+HF_MODEL_NAME = "base_norm_subject.pt"        # Dateiname im Repository
 DEBUG_DIR = Path(__file__).parent / "debug_frames" if os.environ.get("GAZE_DEBUG") == "1" else None
 CROP_MODE = os.environ.get("GAZE_CROP", "eyes").lower()
 if os.environ.get("GAZE_FACE_CROP") == "0":           # alte Einstellung weiter erlauben
@@ -220,12 +229,34 @@ def block_split(n, n_blocks=N_BLOCKS, val_every=VAL_EVERY, gap=GAP_FRAMES):
     return tr, va
 
 
+def ensure_model_file(model_file: Path) -> None:
+    """Lädt das Basismodell von Hugging Face, wenn es lokal fehlt."""
+    if model_file.exists():
+        return
+    if not HF_MODEL_REPO:
+        raise FileNotFoundError(
+            f"Modelldatei fehlt: {model_file}\n"
+            "Entweder die Datei dorthin kopieren oder das Hugging-Face-Repository angeben:\n"
+            "  GAZE_MODEL_REPO=<name>/<repo>  (oder HF_MODEL_REPO in gaze_model.py)")
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError as e:
+        raise ImportError("Für den Download fehlt das Paket huggingface_hub "
+                          "(pip install huggingface_hub).") from e
+    print(f"Basismodell fehlt lokal -> lade {HF_MODEL_NAME} von huggingface.co/{HF_MODEL_REPO} ...")
+    cached = hf_hub_download(repo_id=HF_MODEL_REPO, filename=HF_MODEL_NAME)
+    model_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp = model_file.with_suffix(".part")
+    tmp.write_bytes(Path(cached).read_bytes())
+    tmp.replace(model_file)                      # erst nach vollständigem Download umbenennen
+    print(f"Gespeichert: {model_file}")
+
+
 class GazeModel:
     """Lädt das Basismodell einmal beim Start des Servers."""
 
     def __init__(self, model_file=MODEL_FILE):
-        if not Path(model_file).exists():
-            raise FileNotFoundError(f"Modelldatei fehlt: {model_file}")
+        ensure_model_file(Path(model_file))
         model = resnet18(weights=None)          # Gewichte kommen vollständig aus der Datei
         model.fc = build_head()
         model.load_state_dict(torch.load(model_file, map_location="cpu", weights_only=True))

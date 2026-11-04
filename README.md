@@ -42,6 +42,7 @@ gaze-estimation/
 ├── exp.py                 Hyperparameter-Studie (5 Wiederholungen, 98-%-KI)
 ├── train_base.py          E0: die zwei Basismodelle trainieren und speichern
 ├── personal_exp.py        E1–E3: Personalisierung der Sessions
+├── moving_average.py      E4: zeitliche Glättung der gespeicherten Vorhersagen
 ├── session_design.py      Abdeckung, Übergangsbilder, bereinigte Labels
 ├── spatial_analysis.py    Fehler in Mitte / Rand / Ecke, Abbildung 4.3
 ├── plot_targets.py        Abbildung 4.1 (rohe und normierte Ziele)
@@ -60,6 +61,7 @@ gaze-estimation/
 │   ├── exp_reproduction/  exp_results_all.json (Hyperparameter-Studie)
 │   ├── heatmap/           Vorhersagen für die räumliche Analyse
 │   ├── personal/          personal_runs.jsonl (Ergebnisse der Arbeit), predictions/
+│   ├── moving_average/    Ergebnisse der Glättung (E4)
 │   └── figures/           Abbildungen
 ├── cache/                 gespeicherte ResNet-Merkmale (automatisch, nicht in Git)
 ├── demo/                  Web-Demo (eigene README)
@@ -97,6 +99,7 @@ python main.py
 | Bereinigte Labels (E1b) | `python personal_exp.py --sessions gen4 --labels clean` |
 | Aufteilung der Daten (E2) | `python personal_exp.py --sessions 21 22 --split random --seeds 42 43 44`<br>`python personal_exp.py --sessions 21 22 --split sequential --seeds 42 43 44`<br>`python personal_exp.py --split two_videos --pairs 21:22,22:21 --seeds 42 43 44` |
 | Session-Design (E3) | `python personal_exp.py --sessions all --split sequential` |
+| Glättung (E4) | `python moving_average.py` (kein Training, nutzt `results/personal/predictions/`) |
 | Ergebnisse anzeigen | `python personal_exp.py --summary` |
 | Hyperparameter-Studie | `python exp.py --experiment all --sample-seed 0 --val-size 200` |
 | Bereinigte Labels schreiben | `python session_design.py --write-clean` |
@@ -121,6 +124,7 @@ Fehler = Diagonalfehler in % der Bildschirmdiagonale (kleiner ist besser).
 | Personalisierung, 18 Sessions, zufälliger Split (E1) | **19,79 %** | 30,32 % |
 | dasselbe mit Basismodell `norm_random` | 19,59 % | 30,32 % |
 | Personalisierung, sequenzieller Split (E3) | 27,93 % | 31,84 % |
+| dasselbe mit Moving Average, 0,5 s (E4) | 28,10 % (Springen −40 %) | 31,84 % |
 | Sessions 21/22: zufällig / sequenziell / zwei Videos (E2) | 13,85 / 15,55 / 17,24 % | 30,97 / 28,67 / 32,65 % |
 | Gen 4, MOVE-Testbilder: Original / bereinigt (E1b) | 16,72 / 15,88 % | 30,51 % |
 | Beste Session (S02) | 10,48 % | 28,49 % |
@@ -163,6 +167,8 @@ Das gilt nur für den eigenen Code, **nicht** für Daten oder Modelle Dritter.
 ### 7.3 Trainierte Modelle
 
 - In diesem Repository liegen **keine** trainierten Modelle (`*.pt` stehen in `.gitignore`).
+- Das Basismodell liegt in einem eigenen Modell-Repository auf Hugging Face; die Demo lädt es
+  beim ersten Start automatisch (siehe `demo/README.md`).
 - Das Basismodell (`base_norm_subject.pt`) wurde auf GazeCapture trainiert. Es gelten
   daher ebenfalls die Bedingungen von GazeCapture: **nur Forschung, nicht kommerziell**.
 - Der Backbone nutzt die ImageNet-Gewichte von torchvision
@@ -178,7 +184,7 @@ Das gilt nur für den eigenen Code, **nicht** für Daten oder Modelle Dritter.
 - Sie liegen in einem **privaten** Hugging-Face-Dataset und werden nicht öffentlich
   weitergegeben. Alle Rechte liegen beim Autor.
 
-### 7.5 Web-Demo (Hugging Face Space)
+### 7.5 Web-Demo
 
 - Der Code der Demo (`demo/`) steht unter der MIT-Lizenz.
 - Die Demo verarbeitet Kamerabilder nur im Arbeitsspeicher und speichert sie nicht.
