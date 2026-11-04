@@ -1,0 +1,107 @@
+% ==============================================================================
+% 05_discussion.tex – Chapter 5
+% ==============================================================================
+\chapter{Discussion}
+\label{ch:diskussion}
+
+\section{Answers to the Research Questions}
+\label{sec:antworten}
+
+\paragraph{RQ1: How much does a short personalization help?}
+The generic base model is not better than the constant baseline on the own
+sessions (\SI{30.57}{\percent} compared with \SI{30.32}{\percent}). With a
+temporal split, which matches real use, personalization lowers the error from
+\SI{31.84}{\percent} to \SI{27.93}{\percent}, that is, by about
+\SI{12}{\percent} (Wilcoxon $p=0.002$). In 8 of 18 sessions there is no
+improvement (\cref{sec:design_performance}). In the good sessions 21 and 22,
+however, the gain stays large (\SI{46}{\percent}) and even holds for a second
+recording (\SI{47}{\percent} reduction, \cref{sec:loading}). With a random
+split, the error drops to \SI{19.79}{\percent}, that is, by about one third,
+and the best session reaches \SI{10.5}{\percent} (\cref{sec:sessions_results}).
+This split, however, is too optimistic.
+\emph{Answer:} a short personalization helps clearly, but only under good
+recording conditions. The random split overestimates the benefit.
+
+\paragraph{RQ2: Which training setting is suitable?}
+On GazeCapture, most settings do not differ significantly, because all models
+stay close to the constant baseline (\cref{sec:training}). It is clear that
+sigmoid is the best activation and that L1 is better than the loss weighted by
+position. Training only the head (\enquote{FC only}) is as good as more layers,
+but more stable and much faster. \emph{Answer:} frozen backbone, regression head with
+sigmoid, L1 loss, learning rate $10^{-4}$ and batch size 32. The choice is based
+mainly on stability and effort; for the learning rate also on the lowest error
+in the first test.
+
+\paragraph{RQ3: What is the role of data split and calibration?}
+The split is very important. The random split is too optimistic, because almost
+identical neighbouring frames end up in training and test. The smooth movement of
+the target (Gen~1) covers the screen best and had the lowest error. Jumps create
+frames with wrong labels. Removing these WAIT frames improves the result
+slightly (\num{0.84} percentage points, not significant). More labels in the
+corners do not lower the corner error. \emph{Answer:} a short, smooth movement
+across the whole screen is best. Jumps should be logged so that transition frames
+can be removed. Evaluation should always use a temporal split.
+
+\paragraph{RQ4: What is the influence of the recording conditions?}
+The strongest factor is the background: a busy background raises the error by 6
+to 15 percentage points. Glasses usually raise it, and in dark rooms
+personalization hardly helps. Length and device (webcam) show no clear effect
+(\cref{sec:conditions}). \emph{Answer:} a calm background and good light are more
+important than the design of the calibration. These statements, however, are
+based on single sessions.
+
+\section{Relation to the State of the Art}
+\label{sec:einordnung}
+Some results fit the literature well:
+\begin{itemize}
+  \item \textbf{Few parameters are enough.} As in offset calibration
+        \cite{chen2020offset}, SPAZE \cite{linden2019spaze} and PIGaze
+        \cite{wang2026pigaze}, a small adapted head on a frozen backbone is
+        enough here. More trainable layers only make training less stable. This
+        fits Kumar et al.~\cite{kumar2022finetuning}.
+  \item \textbf{Personalization is the most important factor.} As in Valliappan
+        et al.~\cite{valliappan2020smartphone}, almost the whole gain comes from
+        a few seconds of personal data.
+  \item \textbf{The evaluation protocol decides.} Similar to the difference
+        between \code{norm\_random} and \code{norm\_subject}, random splits
+        overestimate the performance (\cref{subsec:norm_subject}).
+  \item \textbf{Wrong labels have a small effect.} DMRF \cite{jiang2026dmrf} also
+        lowers the error only a little ($3.92^\circ \rightarrow 3.85^\circ$).
+        Here, removing the WAIT frames gives \num{0.84} percentage points;
+        this difference is not significant ($p=0.43$).
+\end{itemize}
+There is also an important difference: the generic model of this thesis is very
+weak. It stays at the screen centre, while methods in the literature reach a few
+degrees of accuracy even without personalization. The main reason is probably the
+input: most methods use face or eye crops, while this thesis uses the whole
+camera image. In addition, the base model uses only \num{1000} frames of 179
+persons. The absolute numbers are in any case not directly comparable with the
+literature because of the different metrics (\cref{sec:vergleich}).
+
+\section{Limitations}
+\label{sec:grenzen}
+\begin{itemize}
+  \item \textbf{One person:} all own recordings come from one person (the
+        author), recorded with two devices. The results therefore do not
+        automatically hold for other persons.
+  \item \textbf{Few sessions and mixed conditions:} 18 sessions are not enough
+        for reliable statements about single factors. Design, light, background
+        and glasses often change at the same time.
+  \item \textbf{Single runs:} there is usually only one run per session (seed
+        42). The spread between seeds can be up to 3 percentage points.
+  \item \textbf{One backbone and whole images:} only ResNet-18 with whole camera
+        images was studied. DINOv2, CLIP, MAE, UniGaze, adapters and LoRA were
+        not tested, and neither were face or eye crops in the experiments of
+        Chapter~4.
+  \item \textbf{Weak base model:} the base model hardly learns anything on
+        GazeCapture and mainly serves as a starting point for personalization
+        in this thesis. Whether a randomly initialized head would work equally
+        well was not tested. A better base model could change the
+        personalization results.
+  \item \textbf{Many tests:} many statistical tests were computed without a
+        correction for multiple comparisons (for example Bonferroni). Close
+        results such as $p=0.032$ (L1 versus the sensitive loss) should
+        therefore be read with care.
+  \item \textbf{Metric:} the diagonal error is not directly comparable with
+        angular errors or centimetres from the literature.
+\end{itemize}

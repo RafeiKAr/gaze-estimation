@@ -22,8 +22,9 @@ BHT Berlin, 2026). Code: https://github.com/RafeiKAr/gaze-estimation
 - 27 Kalibriersitzungen einer Person (des Autors), davon 18 in der Arbeit ausgewertet
 - Gerät A: Microsoft Surface Pro 9 (Sitzungen 01–03, 25–27)
 - Gerät B: HP-Laptop (Sitzungen 05–09, 19–24); Sitzung 04: Gerät nicht protokolliert
-- pro Sitzung: Webcam-Bilder (640 × 480), ggf. Video, `norm_labels.csv`
-  (Zeit und normierte Position des Punktes auf dem Bildschirm, [0, 1]²)
+- pro Sitzung (Ordner `01/`, `02/`, …): Webcam-Bilder (640 × 480) im Ordner `images/`
+  und, falls vorhanden, das Video der Aufnahme
+- Die Labels (Position des Punktes) liegen nicht hier, sondern im Code-Repository.
 
 ## Lizenz und Datenschutz
 

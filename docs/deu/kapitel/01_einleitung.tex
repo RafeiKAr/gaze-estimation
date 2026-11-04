@@ -1,0 +1,93 @@
+% ==============================================================================
+% 01_einleitung.tex – Kapitel 1
+% ==============================================================================
+\chapter{Einleitung}
+\label{ch:einleitung}
+
+\section{Motivation}
+\label{sec:motivation}
+Eye-Tracking misst, wohin ein Mensch schaut. Diese Information ist für viele
+Anwendungen nützlich: für die Bedienung von Computern ohne Hände, zum
+Beispiel für Menschen mit körperlichen Einschränkungen, für Studien zur
+Benutzerfreundlichkeit von Webseiten, für Lernplattformen oder für die
+Forschung in Psychologie und Medizin. Professionelle Eye-Tracker arbeiten mit
+Infrarotlicht und speziellen Kameras. Sie sind sehr genau, aber teuer und
+nicht überall verfügbar.
+
+Eine normale Webcam ist dagegen in fast jedem Laptop eingebaut. Wenn man den
+Blick mit einer Webcam schätzen könnte, wäre Eye-Tracking für sehr viele
+Menschen ohne zusätzliche Hardware möglich. Das ist aber schwierig. Die Bilder
+haben eine niedrige Auflösung, und die Augen sind darin nur wenige Pixel groß.
+Das Licht ändert sich, der Kopf bewegt sich, viele Menschen tragen eine Brille,
+und jede Person hat eine andere Augen- und Gesichtsform. Ein allgemeines Modell,
+das auf vielen Personen trainiert wurde, passt deshalb oft schlecht zu einer
+neuen Person.
+
+\section{Problemstellung und Ziel}
+\label{sec:ziel}
+Ein Ausweg ist die \emph{Personalisierung}: Man nimmt ein vortrainiertes
+Modell und passt es mit wenigen Daten an eine Person an. Die Person schaut dazu
+kurz auf einen Punkt, der sich über den Bildschirm bewegt (Kalibrierung). Die
+Kalibrierung soll aber kurz sein, denn niemand möchte vor jeder Nutzung
+mehrere Minuten lang kalibrieren. Die Personalisierung muss also
+\emph{dateneffizient} sein.
+
+Das Ziel dieser Arbeit ist es, zu untersuchen, wie gut ein vortrainiertes
+Bildverarbeitungsmodell mit einer kurzen Webcam-Kalibrierung an eine Person
+angepasst werden kann. Als Modell dient ein auf ImageNet vortrainiertes
+ResNet-18. Sein Backbone bleibt eingefroren, und nur ein kleiner
+Regression Head wird trainiert. Der Head wird zuerst auf dem Datensatz
+GazeCapture trainiert und danach mit eigenen Aufnahmen personalisiert.
+
+\section{Forschungsfragen}
+\label{sec:forschungsfragen}
+Die Arbeit beantwortet vier Forschungsfragen (FF):
+\begin{description}[leftmargin=1.2cm, style=nextline]
+  \item[FF1] Wie stark senkt eine kurze Personalisierung den Fehler gegenüber
+        einem allgemeinen Modell und gegenüber einer einfachen Schätzung, die
+        immer denselben Punkt ausgibt?
+  \item[FF2] Welche Trainingseinstellung eignet sich für den Regression Head
+        (trainierbare Schichten, Activation, Loss Function, Learning Rate,
+        Batch Size)?
+  \item[FF3] Wie beeinflussen die Aufteilung der Daten (zufällig, zeitlich,
+        zwei Videos) und die Gestaltung der Kalibrierung (Bewegung des Ziels,
+        Entfernen von Transition Frames) das Ergebnis?
+  \item[FF4] Welchen Einfluss haben die Aufnahmebedingungen (Licht,
+        Hintergrund, Brille, Dauer, Gerät bzw.\ Webcam)?
+\end{description}
+
+\section{Beitrag der Arbeit}
+\label{sec:beitrag}
+Die Arbeit liefert folgende Beiträge:
+\begin{itemize}
+  \item \textbf{Eigene Aufnahmen:} 27 Kalibriersitzungen mit zwei
+        Laptop-Webcams, davon 18 ausgewertet. Alle Aufnahmen stammen von einer
+        Person (dem Autor). Die Sitzungen unterscheiden sich in der
+        Bewegung des Ziels, im Licht, im Hintergrund, in der Brille und in der
+        Dauer. Die neueste Generation speichert für jedes
+        Bild die Phase des Ziels (\code{WAIT} oder \code{MOVE}).
+  \item \textbf{Reproduzierbare Pipeline:} feste Seeds, eingefrorener Backbone,
+        gespeicherte Features (Feature-Cache) und gespeicherte Vorhersagen.
+        Ein Personalisierungslauf dauert damit etwa zwei Sekunden auf einer CPU.
+  \item \textbf{Korrigiertes Fehlermaß:} Ein Fehler im Auswertungscode wurde
+        gefunden und behoben. Baselines werden immer auf denselben Daten wie
+        das Modell berechnet.
+  \item \textbf{Systematische Studie:} Hyperparameter mit fünf Wiederholungen
+        und Confidence Intervals, räumliche Analyse des Fehlers sowie ein
+        Vergleich von Datenaufteilungen und Kalibriergestaltungen.
+  \item \textbf{Web-Demo:} Eine Demo im Browser zeigt die Personalisierung
+        live: Kalibrierung, Blickverfolgung und Auswertung (Kapitel~6).
+\end{itemize}
+
+\section{Aufbau der Arbeit}
+\label{sec:aufbau}
+Kapitel~\ref{ch:sota} beschreibt den Stand der Technik.
+Kapitel~\ref{ch:methodik} erklärt Daten, Modell und Vorgehen.
+Kapitel~\ref{ch:results} zeigt die Experimente und Ergebnisse.
+Kapitel~\ref{ch:diskussion} beantwortet die Forschungsfragen und nennt die
+Grenzen der Arbeit. Kapitel~\ref{ch:fazit} fasst die Arbeit zusammen und gibt
+einen Ausblick.
+
+In dieser Arbeit werden die üblichen englischen Fachbegriffe verwendet, zum
+Beispiel Overfitting, Feature oder Loss. Ihre deutsche Übersetzung steht im
+Verzeichnis der Fachbegriffe am Anfang der Arbeit.

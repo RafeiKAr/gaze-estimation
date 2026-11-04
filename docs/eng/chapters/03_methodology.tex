@@ -1,0 +1,161 @@
+% ==============================================================================
+% 03_methodology.tex – Chapter 3
+% ==============================================================================
+\chapter{Methodology}
+\label{ch:methodik}
+
+This chapter gives an overview of the procedure: data
+(\cref{sec:meth_daten,sec:meth_aufnahme}), pre-processing
+(\cref{sec:meth_vorverarbeitung}), model and training (\cref{sec:meth_modell}),
+evaluation (\cref{sec:meth_evaluation}) and implementation
+(\cref{sec:meth_implementierung}). The exact settings of the experiments are
+given in \cref{sec:setup}.
+
+\section{Datasets}
+\label{sec:meth_daten}
+The thesis uses two data sources:
+\begin{itemize}
+  \item \textbf{GazeCapture}~\cite{krafka2016itracker} for the base models. The
+        full dataset has \num{2445504} frames of \num{1474} persons. This
+        thesis uses a publicly available subset from
+        Kaggle~\cite{kaggle_gazecapture}. The script \code{main.py} downloads
+        it and reads, for every person, the files \code{frames.json} (frame
+        names) and \code{dotInfo.json} (position of the dot on the screen,
+        \code{XPts}/\code{YPts}). Persons with missing files or with different
+        numbers of frames and labels are skipped. This gives \num{347085}
+        labelled frames of 262 persons on iPhones and iPads
+        (\code{labels.csv}). There are two splits, each 80/20:
+        \code{norm\_subject} (\SI{80}{\percent} of the persons in training,
+        \SI{20}{\percent} in test; no person in both) and \code{norm\_random} (random by
+        groups of person and target point; the same person can appear in
+        training and test). For the experiments, \num{1000} training and
+        \num{200} test frames are drawn at random, plus 200 validation frames
+        of a further person.
+  \item \textbf{Own recordings} for personalization. One person (the author)
+        recorded 27 calibration sessions with two laptop webcams. 18 of them are
+        evaluated (\cref{sec:meth_aufnahme}).
+\end{itemize}
+
+\section{Recording the Personalization Data}
+\label{sec:meth_aufnahme}
+A recording program shows a red point on the screen, and the person follows it
+with the eyes. At the same time, the webcam records images. For each image, the
+position of the point is stored, with 6 labels per second. The labels are in the
+file \code{norm\_labels.csv} of each session; the positions are already
+normalized to $[0,1]^2$. Three generations of the program are used:
+\begin{itemize}
+  \item \textbf{Gen~1} (sessions 01--04): the point moves smoothly and without
+        jumps across the whole screen.
+  \item \textbf{Gen~2} (sessions 05--09): the point jumps every 1.4 to 2.7
+        seconds to a random new place. The recordings are short (about
+        \SI{30}{\second}).
+  \item \textbf{Gen~4} (sessions 19--27): the recording consists of segments of
+        \SI{5}{\second}. Each segment starts with \SI{0.5}{\second}
+        \code{WAIT} at a new start point; then the point moves for
+        \SI{4.5}{\second} (\code{MOVE}). \SI{90}{\percent} of the start points
+        lie in the corners. The program stores the phase for every frame.
+\end{itemize}
+Gen~3 (sessions 10--18) was discarded because the model could not learn
+anything from it. The sessions also differ in light, background, glasses, length
+(90 or \SI{120}{\second} in Gen~4) and device. Two laptops, each with a built-in
+webcam, were used: \emph{device~A}, a Microsoft Surface Pro~9 (screen area
+\num{1430}~$\times$~\num{880} pixels), for sessions 01--03 and 25--27, and
+\emph{device~B}, an HP laptop (\num{1870}~$\times$~\num{1000} pixels), for
+sessions 05--09 and 19--24. For session 04 the device was not logged. On both devices the
+frames are stored at \num{640}~$\times$~\num{480} pixels.
+\Cref{tab:session_conditions} shows all conditions.
+
+\section{Pre-Processing}
+\label{sec:meth_vorverarbeitung}
+\begin{itemize}
+  \item \textbf{Targets:} the gaze targets of GazeCapture are divided by the
+        width and height of the respective screen. So all targets lie in the
+        unit square $[0,1]^2$, independent of the device
+        (\cref{sec:normalization}).
+  \item \textbf{Images:} the whole camera image is resized to
+        $224\times224$ pixels and normalized with the ImageNet means and
+        standard deviations. There is no face or eye crop.
+  \item \textbf{Cleaned labels:} for Gen~4, the \code{WAIT} frames can be
+        removed. The script \code{session\_design.py --write-clean} writes the
+        file \code{norm\_labels\_clean.csv} for this.
+\end{itemize}
+
+\section{Model and Training}
+\label{sec:meth_modell}
+The model has two parts:
+\begin{enumerate}
+  \item a \textbf{ResNet-18}~\cite{he2016resnet}, pretrained on ImageNet
+        (\code{ResNet18\_Weights.DEFAULT}), as feature extractor. It gives
+        512 features per image.
+  \item a \textbf{regression head}: an MLP of four fully connected layers
+        $512 \to 512 \to 256 \to 128 \to 2$ with ReLU, dropout $p=0.2$ after
+        the second layer and an output activation (default: sigmoid). It
+        computes the position $(x,y)$ from the features.
+\end{enumerate}
+Training uses L1 loss (\code{nn.L1Loss}), AdamW (learning rate $10^{-4}$,
+weight decay $10^{-5}$), batch size 32 and early stopping (stop after three
+epochs without improvement, at most 500 epochs). The procedure has two stages:
+\begin{enumerate}
+  \item \textbf{Base model (E0):} the head is trained on GazeCapture
+        (\code{train\_base.py}). Of five seeds, the run with the lowest
+        validation error is kept.
+  \item \textbf{Personalization (E1--E3):} the head of the base model is trained
+        further with the frames of one own session (\code{personal\_exp.py}).
+        The backbone stays frozen, including the BatchNorm statistics.
+\end{enumerate}
+Because the backbone is frozen, its features are computed only once and stored
+(feature cache). After that, only the head is trained. A run therefore takes
+only seconds.
+
+\section{Evaluation}
+\label{sec:meth_evaluation}
+\begin{itemize}
+  \item \textbf{Error measure:} diagonal error $\Ediag$, that is, the Euclidean
+        RMSE in percent of the screen diagonal (\cref{eq:ediag}).
+  \item \textbf{Baselines:} the constant baseline always predicts the mean of
+        the training targets; the random baseline guesses at random. Both are
+        computed on the same test data as the model (\cref{sec:baselines}).
+  \item \textbf{Statistics:} for GazeCapture there are five repeats per setting
+        with a \SI{98}{\percent} confidence interval (Student's $t$) and the
+        Mann-Whitney $U$ test. For the sessions, I use the Wilcoxon signed-rank
+        test (paired) and the Kruskal-Wallis test (comparison of groups).
+  \item \textbf{Splitting the session data:} random 70/15/15, sequential
+        (temporal blocks with a gap of one second) and two videos (training on
+        one session, test on another) (\cref{sec:loading}).
+  \item \textbf{Spatial analysis:} errors in the centre, at the edges and in the
+        corners of the screen (\cref{sec:partition}).
+\end{itemize}
+
+\section{Implementation}
+\label{sec:meth_implementierung}
+The code is written in Python with PyTorch and torchvision. The most important
+parts are:
+\begin{itemize}[nosep]
+  \item \code{main.py}: loads GazeCapture, normalizes the targets and creates
+        the splits;
+  \item \code{model.py}, \code{dataset.py}: model, losses, training, data
+        loading and feature cache;
+  \item \code{metrics.py}: diagonal error and baselines (one single source for
+        all scripts);
+  \item \code{exp.py}: hyperparameter study with five repeats;
+  \item \code{train\_base.py}, \code{personal\_exp.py}: base models and
+        personalization (E0--E3);
+  \item \code{session\_design.py}: coverage, transition frames and cleaned
+        labels;
+  \item \code{spatial\_analysis.py}, \code{plot\_targets.py}: figures;
+  \item \code{auswertung.py}: creates the tables from the result files;
+  \item notebook \code{notebooks/Masterarbeit.ipynb}: runs all experiments and creates tables
+        and figures.
+\end{itemize}
+All experiments run without a GPU on the CPU of the HP laptop
+(device~B): AMD Ryzen~7 3700U, about \SI{13}{\giga\byte} usable memory,
+Ubuntu~26.04.1~LTS, Python~3.12.3, PyTorch~2.12.1 and torchvision~0.27.1
+(CPU versions). The commands to repeat the experiments are given
+in the appendix (\cref{sec:anhang_befehle}). The code and the web demo are
+available on GitHub: \url{https://github.com/RafeiKAr/gaze-estimation}. A copy
+is stored in the BHT cloud:
+\url{https://cloud.bht-berlin.de/index.php/s/P4GkQ9J8zWHbdf9}. The frames
+and videos of the own recordings show the author's face. They are therefore not
+public, but stored in a private dataset on Hugging Face.
+
+

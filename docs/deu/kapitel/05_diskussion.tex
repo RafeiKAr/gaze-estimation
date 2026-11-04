@@ -1,0 +1,116 @@
+% ==============================================================================
+% 05_diskussion.tex – Kapitel 5
+% ==============================================================================
+\chapter{Diskussion}
+\label{ch:diskussion}
+
+\section{Antworten auf die Forschungsfragen}
+\label{sec:antworten}
+
+\paragraph{FF1: Wie stark hilft eine kurze Personalisierung?}
+Das allgemeine Basismodell ist auf den eigenen Sitzungen nicht besser als die
+Konstant-Baseline (\SI{30,57}{\percent} gegenüber \SI{30,32}{\percent}). Mit
+einem zeitlichen Split, der der echten Nutzung entspricht, senkt die
+Personalisierung den Fehler von \SI{31,84}{\percent} auf \SI{27,93}{\percent},
+also um etwa \SI{12}{\percent} (Wilcoxon $p=0,002$). In 8 von 18 Sitzungen
+gibt es dabei keine Verbesserung (\cref{sec:design_performance}). In den guten
+Sitzungen 21 und 22 bleibt der Gewinn aber groß (\SI{46}{\percent}) und gilt
+sogar für eine zweite Aufnahme (\SI{47}{\percent} Verringerung,
+\cref{sec:loading}). Mit zufälligem Split sinkt der Fehler auf
+\SI{19,79}{\percent}, also um etwa ein Drittel, und die beste Sitzung erreicht
+\SI{10,5}{\percent} (\cref{sec:sessions_results}). Dieser Split ist aber zu
+optimistisch.
+\emph{Antwort:} Eine kurze Personalisierung hilft deutlich, aber nur unter
+guten Aufnahmebedingungen. Der zufällige Split überschätzt den Nutzen.
+
+\paragraph{FF2: Welche Trainingseinstellung eignet sich?}
+Auf GazeCapture unterscheiden sich die meisten Einstellungen nicht
+signifikant, weil alle Modelle nahe der Konstant-Baseline bleiben
+(\cref{sec:training}). Klar ist: Sigmoid ist die beste Activation, und L1 ist
+besser als der nach Position gewichtete Loss. Nur den Head zu trainieren
+(\enquote{nur FC}) ist genauso gut wie mehr Schichten, aber stabiler und viel
+schneller. \emph{Antwort:} Eingefrorener Backbone, Regression Head mit Sigmoid,
+L1-Loss, Learning Rate $10^{-4}$ und Batch Size 32. Die Wahl beruht vor allem auf
+Stabilität und Aufwand; bei der Learning Rate auch auf dem kleinsten Fehler
+im ersten Test.
+
+\paragraph{FF3: Welche Rolle spielen Datenaufteilung und Kalibrierung?}
+Die Aufteilung ist sehr wichtig. Der zufällige Split ist zu optimistisch, weil
+fast gleiche Nachbarbilder in Training und Test landen. Die gleichmäßige
+Bewegung des Ziels (Gen~1) deckt den Bildschirm am besten ab und hatte den
+kleinsten Fehler. Sprünge erzeugen Bilder mit falschen Labels. Diese
+WAIT-Bilder zu entfernen, verbessert das Ergebnis leicht (\num{0,84}
+Prozentpunkte, nicht signifikant). Mehr Labels in den Ecken senken den
+Eckfehler nicht. \emph{Antwort:} Eine kurze, gleichmäßige Bewegung über den
+ganzen Bildschirm ist am besten. Sprünge sollte man protokollieren, damit man
+Transition Frames entfernen kann. Bewerten sollte man immer mit einem zeitlichen
+Split.
+
+\paragraph{FF4: Welchen Einfluss haben die Aufnahmebedingungen?}
+Der stärkste Faktor ist der Hintergrund: Ein unruhiger Hintergrund erhöht den
+Fehler um 6 bis 15 Prozentpunkte. Eine Brille erhöht ihn meistens, und in
+dunklen Räumen hilft die Personalisierung kaum. Dauer und Gerät (Webcam) zeigen
+keinen klaren Effekt (\cref{sec:conditions}). \emph{Antwort:} Ruhiger
+Hintergrund und gutes Licht sind wichtiger als die Gestaltung der
+Kalibrierung. Diese Aussagen beruhen aber auf einzelnen Sitzungen.
+
+\section{Einordnung in den Stand der Technik}
+\label{sec:einordnung}
+Einige Ergebnisse passen gut zur Literatur:
+\begin{itemize}
+  \item \textbf{Wenige Parameter reichen.} Wie bei der Offset-Kalibrierung
+        \cite{chen2020offset}, bei SPAZE \cite{linden2019spaze} und bei PIGaze
+        \cite{wang2026pigaze} genügt hier ein kleiner, angepasster Head auf
+        einem eingefrorenen Backbone. Mehr trainierbare Schichten machen das
+        Training nur instabiler. Das passt zu Kumar et
+        al.~\cite{kumar2022finetuning}.
+  \item \textbf{Personalisierung ist der wichtigste Faktor.} Wie bei
+        Valliappan et al.~\cite{valliappan2020smartphone} kommt fast der ganze
+        Gewinn aus wenigen Sekunden persönlicher Daten.
+  \item \textbf{Das Evaluationsprotokoll entscheidet.} Ähnlich wie beim
+        Unterschied zwischen \code{norm\_random} und \code{norm\_subject}
+        überschätzen zufällige Splits die Leistung
+        (\cref{subsec:norm_subject}).
+  \item \textbf{Falsche Labels haben einen kleinen Effekt.} Auch DMRF
+        \cite{jiang2026dmrf} senkt den Fehler nur wenig
+        ($3,92^\circ \rightarrow 3,85^\circ$). Hier bringt das Entfernen der
+        WAIT-Bilder \num{0,84} Prozentpunkte; dieser Unterschied ist nicht
+        signifikant ($p=0,43$).
+\end{itemize}
+Es gibt aber auch einen wichtigen Unterschied: Das allgemeine Modell dieser
+Arbeit ist sehr schwach. Es bleibt bei der Bildschirmmitte, während
+Verfahren in der Literatur auch ohne Personalisierung einige Grad Genauigkeit
+erreichen. Der wichtigste Grund ist wahrscheinlich die Eingabe: Die meisten
+Verfahren nutzen Gesichts- oder Augenausschnitte, diese Arbeit dagegen das
+ganze Kamerabild. Außerdem nutzt das Basismodell nur \num{1000} Bilder von 179
+Personen. Die absoluten Zahlen sind wegen der unterschiedlichen Metriken
+ohnehin nicht direkt mit der Literatur vergleichbar (\cref{sec:vergleich}).
+
+\section{Grenzen der Arbeit}
+\label{sec:grenzen}
+\begin{itemize}
+  \item \textbf{Eine Person:} Alle eigenen Aufnahmen stammen von einer Person
+        (dem Autor), aufgenommen mit zwei Geräten. Die Ergebnisse gelten daher
+        nicht automatisch für andere Personen.
+  \item \textbf{Wenige Sitzungen und vermischte Bedingungen:} 18 Sitzungen
+        reichen nicht für sichere Aussagen über einzelne Faktoren. Gestaltung,
+        Licht, Hintergrund und Brille ändern sich oft gleichzeitig.
+  \item \textbf{Einzelne Läufe:} Pro Sitzung gibt es meist nur einen Lauf
+        (Seed 42). Die Streuung zwischen Seeds kann bis zu 3 Prozentpunkte
+        betragen.
+  \item \textbf{Ein Backbone und ganze Bilder:} Untersucht wurde nur ResNet-18
+        mit ganzen Kamerabildern. DINOv2, CLIP, MAE, UniGaze, Adapter und LoRA
+        wurden nicht getestet, ebenso wenig Gesichts- oder Augenausschnitte in
+        den Experimenten von Kapitel~4.
+  \item \textbf{Schwaches Basismodell:} Das Basismodell lernt auf GazeCapture
+        kaum etwas und dient in dieser Arbeit vor allem als Startpunkt für die
+        Personalisierung. Ob ein zufällig initialisierter Head ähnlich gut
+        wäre, wurde nicht getestet. Ein besseres Basismodell könnte die
+        Personalisierung verändern.
+  \item \textbf{Viele Tests:} Es wurden viele statistische Tests ohne Korrektur
+        für Mehrfachvergleiche (zum Beispiel nach Bonferroni) gerechnet.
+        Knappe Ergebnisse wie $p=0,032$ (L1 gegenüber dem sensitiven Loss) sind
+        daher vorsichtig zu lesen.
+  \item \textbf{Metrik:} Der Diagonalfehler ist nicht direkt mit Winkelfehlern
+        oder Zentimetern aus der Literatur vergleichbar.
+\end{itemize}

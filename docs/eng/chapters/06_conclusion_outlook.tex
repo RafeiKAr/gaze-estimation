@@ -1,0 +1,72 @@
+% ==============================================================================
+% 06_conclusion_outlook.tex – Chapter 6
+% ==============================================================================
+\chapter{Conclusion and Outlook}
+\label{ch:fazit}
+
+\section{Conclusion}
+\label{sec:fazit}
+This thesis studied how well a pretrained vision model can be adapted to one
+person with a short webcam calibration. A ResNet-18 pretrained on ImageNet stayed
+frozen, and only a small regression head was trained.
+
+The most important results are:
+\begin{itemize}
+  \item A generic model trained on GazeCapture is not better than an estimate
+        that always gives the screen centre. It therefore mainly serves as a
+        starting point for personalization.
+  \item With a realistic, temporal split, a few minutes of personal data lower
+        the error from \SI{31.8}{\percent} to \SI{27.9}{\percent} of the
+        screen diagonal (about $-$\SI{12}{\percent}, 18 sessions). In good
+        sessions the gain stays large (about $-$\SI{46}{\percent}) and also
+        holds for a new recording of the same person. One run takes about two
+        seconds on a CPU.
+  \item A random split gives \SI{19.8}{\percent} instead of
+        \SI{30.3}{\percent} (about $-$\SI{35}{\percent}). It overestimates
+        the benefit, however, because almost identical neighbouring frames end
+        up in training and test.
+  \item A calm background and good light are more important than the design of
+        the calibration. A smooth movement of the target across the whole screen
+        was best.
+  \item Frames directly after a jump of the target have wrong labels. Removing
+        them helps a little, but costs nothing.
+\end{itemize}
+Overall, the thesis shows: data-efficient personalization works with simple
+means. But the accuracy depends strongly on the recording conditions, and it must be
+assessed with a realistic data split. All recordings come from one person (the
+author). The results therefore hold for this person only at first; whether they
+transfer to other persons must be shown by a study with several persons.
+
+\section{Outlook}
+\label{sec:ausblick}
+Several next steps are obvious:
+\begin{itemize}
+  \item \textbf{Eye or face crops as input.} In the whole camera image, the eyes
+        are very small. A crop should give the model much more gaze
+        information.
+  \item \textbf{Other pretrained models.} DINOv2, CLIP, MAE or UniGaze instead of
+        ResNet-18, each with a frozen backbone and a small head.
+  \item \textbf{Lightweight adaptation of the backbone.} Adapters or LoRA as a
+        middle way between head-only training and full fine-tuning.
+  \item \textbf{More persons and more sessions,} with conditions that change in
+        only one factor at a time.
+  \item \textbf{Taking head movement into account,} for example with the head
+        position as an extra feature or with normalized face images.
+\end{itemize}
+
+\paragraph{Web demo.}
+As a practical test, I built a demo in the browser (server with FastAPI,
+suitable for Hugging Face Spaces). The user follows a point for 60
+seconds. Then a model is personalized, and the gaze is shown live as a light
+field on a grid of $3\times3$ cells. At the end, an evaluation shows when which
+cell was looked at. The demo already uses some ideas from the outlook: an eye
+crop, spatial features of the ResNet-18, a ridge regression and the head
+position as an extra feature. A short test with five points (\SI{3}{\second}
+each) after the calibration measures the error on new frames. In several single
+tests, this error was between about \SI{17.6}{\percent} and
+\SI{25.2}{\percent} (last test: \SI{19.0}{\percent}); a constant estimate
+reaches about \SI{23}{\percent} on the calibration data. In a direct
+comparison, the test error fell from \SI{23.0}{\percent} to
+\SI{17.6}{\percent} with the head position. The values vary strongly between
+runs and were not evaluated systematically. But they show that head movement
+and light are large sources of error in live use.

@@ -1,0 +1,1085 @@
+% Chapter 2 – included by thesis.tex / Submission.tex
+\chapter{State of the Art}
+\label{ch:sota}
+% ==============================================================================
+
+This chapter gives an overview of gaze estimation with ordinary RGB cameras.
+First, I explain the basics (\cref{sec:grundlagen}) and the special problems of
+webcams (\cref{sec:webcam}). Then I present important datasets
+(\cref{sec:datensaetze}), network architectures (\cref{sec:architekturen}) and
+pretrained models (\cref{sec:pretrained}). After that, the chapter covers
+personalization, domain shift, test-time adaptation and data quality. At the
+end, I derive the research gaps that this thesis addresses.
+
+% ------------------------------------------------------------------------------
+\section{Basics of Appearance-Based Gaze Estimation}
+\label{sec:grundlagen}
+% ------------------------------------------------------------------------------
+Eye tracking uses images of the eyes or the face to find out where a person is
+looking. There are two kinds of output: the three-dimensional gaze direction
+(usually two angles, pitch and yaw) or the two-dimensional \emph{point of
+regard} (PoR). The PoR is the point on the screen that the person looks at.
+This thesis estimates the 2D PoR from images of an ordinary webcam.
+
+\subsection{Classical Methods}
+\label{subsec:klassisch}
+Appearance-based methods learn a direct mapping from the image to the gaze
+target. They do not need a geometric model of the eye. Early methods used
+hand-crafted image features, for example Local Binary Patterns (LBP),
+Histograms of Oriented Gradients (HoG) or SIFT. These features were combined
+with simple regressors such as linear regression, random forests or support
+vector regression (SVR). Such methods are fast. With head movement and
+changing light, however, they become much less accurate, because the features
+do not separate these changes well from the gaze information.
+
+\subsection{First Deep Learning Methods}
+\label{subsec:dl_pioniere}
+Convolutional neural networks (CNNs) can map face and eye images directly to
+screen positions. Krafka et al.~\cite{krafka2016itracker} introduced
+\emph{iTracker}, one of the first CNNs for mobile eye tracking without extra
+hardware. The model processes four inputs in separate branches: the left eye,
+the right eye, the face and a binary \emph{face grid} (where the face is in the
+image). Then the features are combined. Without calibration, the error is
+\SI{1.71}{\centi\metre} on smartphones and \SI{2.53}{\centi\metre} on tablets.
+For personalization, the authors train one SVR per user on the features of
+layer \code{fc1}. They use recordings of up to 13 fixed calibration points.
+With all 13 points, the error drops to \SI{1.34}{\centi\metre} and
+\SI{2.12}{\centi\metre}. With very few points, however, the SVR easily runs into
+\emph{overfitting}: the model almost memorizes the few training samples and
+therefore becomes worse on new images. The model runs in real time on mobile devices.
+
+An important contribution of this work is the GazeCapture dataset
+(\cref{sec:datensaetze}). It was collected by \emph{crowdsourcing} on smartphones and
+tablets in everyday conditions (\enquote{in the wild}): many volunteers
+recorded the data themselves with an app on their own device. It is still used as a
+benchmark and as a source for pretraining.
+
+\paragraph{Relevance for this thesis.}
+iTracker introduced three ideas that are still important: (1) the GazeCapture
+dataset, (2) personalization with calibration data and (3) combining features
+from several image regions. This thesis uses the same data. Instead of AlexNet
+and SVR, however, it uses a ResNet-18 \cite{he2016resnet} with a
+regression head and L1 loss. Here the regression head is a multi-layer
+perceptron (MLP), a small network of fully connected layers that computes the screen
+coordinates $(x, y)$ from the image features of the ResNet-18. It also evaluates the base models with a
+subject-disjoint split (\code{norm\_subject}) and not only with a random
+split (\code{norm\_random}). Wrong labels are handled already during recording: the
+recording program stores the phase of the target for every frame
+(\code{WAIT} or \code{MOVE}).
+
+\subsection{Types of Methods}
+\label{subsec:taxonomie}
+Gaze estimation methods can be divided into three classes:
+\begin{enumerate}
+  \item \textbf{Model-based (geometric) methods} use a 3D model of the
+        eyeball, pupil ellipses and light reflections on the cornea. They
+        usually need high-resolution images and infrared light. In normal
+        daylight they often fail.
+  \item \textbf{Feature-based methods} find geometric points in the face, for
+        example eye corners or the centre of the iris. From these points they
+        compute the gaze.
+  \item \textbf{Appearance-based methods} use the eye or face image itself as
+        input. A deep neural network directly predicts 2D coordinates or 3D
+        angles.
+\end{enumerate}
+Thanks to progress in deep learning, appearance-based methods are now the
+standard under \emph{unconstrained conditions}, that is, with free head pose,
+changing light and any distance to the camera.
+
+Cheng et al.~\cite{cheng2024review} also divide \emph{remote-camera} methods
+(the camera stands in front of the person and is not worn on the head) into
+three groups: methods with a reconstructed 3D eye model (the eyeball is
+modelled geometrically, and the gaze is computed from the pupil and light
+reflections), regression on 2D eye features, and appearance-based methods. They sort deep learning approaches by
+four aspects: feature extraction, network architecture, personal calibration,
+and devices and platforms. An important contribution is a benchmark. It unifies
+the pre-processing (face and eye detection, data normalization) and the
+post-processing (conversion between 2D gaze point and 3D gaze vector). This
+allows a fair comparison of methods. According to the benchmark,
+appearance-based methods reach about $5^\circ$ at short distance or with high
+resolution. At large distance and low resolution (for example Gaze360 and
+RT-GENE), the errors are much larger. As open topics, the authors name: (1)
+more robust features that do not depend on the environment, (2) high accuracy
+with fast and easy calibration -- here there is a trade-off between
+calibration time and accuracy -- and (3) the explainability of the learned
+features.
+
+Other surveys give additional background. Liu et al.~\cite{liu2022beholder}
+describe the path from classical methods to deep learning; I use this work
+mainly as a historical reference. Pathirana et al.~\cite{pathirana2022survey}
+cover deep learning methods for single and multiple users. They compare CNN
+architectures, some of which are pretrained on ImageNet. Newer pretrained
+models such as DINOv2, CLIP or MAE are not the focus of these surveys. For
+benchmark comparisons I therefore mainly use Cheng et
+al.~\cite{cheng2024review}.
+
+% ------------------------------------------------------------------------------
+\section{Webcam-Based Eye Tracking: Everyday Use versus Laboratory}
+\label{sec:webcam}
+% ------------------------------------------------------------------------------
+Webcams are cheap and almost everywhere: in laptops, on desktop computers and
+in smartphones. No extra hardware is needed. But the conditions are much harder
+than for special eye trackers with infrared light:
+
+\begin{itemize}
+  \item \textbf{Infrared systems} use high-resolution cameras, infrared light
+        and reflections on the cornea. Liu et al.~\cite{liu2022beholder} report
+        typical accuracies of $0.5^\circ$ to $2^\circ$ for such methods.
+        Commercial devices work at fixed distances (for example
+        \SIrange{50}{80}{\centi\metre}) and reach $0.3^\circ$ to $0.5^\circ$
+        under optimal conditions.
+  \item \textbf{Webcams in everyday use} deliver low-resolution images without
+        controlled light. The ambient light changes, the position of camera
+        and screen is different on every device, and distance and head pose
+        are free. Liu et al.~\cite{liu2022beholder} report typical errors above
+        $3^\circ$ for appearance-based methods. The benchmark of Cheng et
+        al.~\cite{cheng2024review} shows about $5^\circ$ at short distance and
+        much more at large distance and low resolution.
+\end{itemize}
+
+Two well-known works still show that webcam eye tracking is useful in practice.
+Papoutsaki et al.~\cite{papoutsaki2016webgazer} present \emph{WebGazer}, an
+open-source eye tracker that runs completely in the browser. WebGazer does not
+need its own calibration. With \emph{ridge regression}, it continuously learns from
+mouse clicks and mouse movements which eye features belong to which screen
+position. Ridge regression is a linear regression with a penalty on large
+weights (L2 regularization); this keeps the model stable even with few and
+noisy data. The accuracy is enough to find the rough area a person looks at, but
+not for detailed analysis. Valliappan et al.~\cite{valliappan2020smartphone},
+in contrast, pretrain a CNN on GazeCapture, fine-tune it with calibration data
+and add a small regression model per person. On smartphones at
+\SIrange{25}{40}{\centi\metre} distance they reach $0.6^\circ$ to $1^\circ$.
+About 30~seconds of calibration reduce the error from \SI{1.92}{\centi\metre}
+to \SI{0.46}{\centi\metre}. According to the authors, this is as accurate as
+much more expensive mobile eye trackers. The conditions, however, were
+favourable (head almost frontal, short distance). Both works show: without
+special hardware, personalization is the most important factor for accuracy.
+
+Properties of the person also affect the accuracy, for example eye shape, face
+shape, glasses and the usual head pose. Generic models therefore often have a
+systematic offset for new persons. This is why personalization is a central
+research topic (\cref{sec:personalisierung}). This thesis studies exactly such
+conditions, among others two devices with different webcams,
+glasses and backgrounds.
+
+% ------------------------------------------------------------------------------
+\section{Large Datasets for Gaze Estimation}
+\label{sec:datensaetze}
+% ------------------------------------------------------------------------------
+Modern appearance-based methods need large and varied datasets.
+\Cref{tab:datensaetze} summarizes the datasets that are important for this
+thesis.
+
+\begin{itemize}
+  \item \textbf{MPIIGaze}~\cite{zhang2015mpiigaze} is one of the first
+        standardized everyday datasets. It contains \num{213659} face images of
+        15 persons. They were recorded over several months during normal work
+        on a laptop~\cite{zhang2019mpiigaze}. The variant MPIIFaceGaze with
+        face images is usually evaluated with leave-one-subject-out (each
+        person is the test person once).
+  \item \textbf{GazeCapture}~\cite{krafka2016itracker} contains \num{2445504}
+        images of \num{1474} persons, recorded by crowdsourcing on iPhones and
+        iPads. Light and head pose vary a lot. GazeCapture is the data basis of
+        the base models in this thesis. Reasons for this choice: it is one of
+        the largest and most diverse datasets (many persons, devices and
+        environments), and its labels are 2D points on the screen (point of
+        regard) -- exactly the quantity this thesis estimates.
+  \item \textbf{ETH-XGaze}~\cite{zhang2020ethxgaze} is a high-resolution
+        dataset with several cameras. It contains more than one million images
+        of 110 persons with very large head and gaze angles.
+  \item \textbf{EVE}~\cite{park2020eve} contains synchronized screen content,
+        camera images and gaze data. 54 persons were recorded with four
+        cameras, more than 12~million images in total.
+  \item \textbf{Gaze360}~\cite{kellnhofer2019gaze360} contains indoor and
+        outdoor recordings of 238 persons. The 3D gaze labels cover a very wide
+        range of head poses and distances (about \num{172000} images in
+        training, validation and test).
+  \item \textbf{EyeDiap} and \textbf{RT-GENE} are mainly used for tests across
+        datasets. RT-GENE contains, among others, larger camera distances and
+        head-mounted devices.
+\end{itemize}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Overview of selected gaze estimation datasets.}
+  \label{tab:datensaetze}
+  \begin{tabularx}{\textwidth}{L{2.4cm} L{2.6cm} L{2.2cm} Y}
+    \toprule
+    \textbf{Dataset} & \textbf{Size} & \textbf{Persons} & \textbf{Recording conditions} \\
+    \midrule
+    MPIIGaze      & \num{213659} images & 15 & Laptop webcam, everyday use over months \\
+    GazeCapture   & \num{2445504} images & \num{1474} & Smartphones and tablets, crowdsourcing \\
+    ETH-XGaze     & >1~million images & 110 & Lab with several cameras, extreme head poses \\
+    EVE           & >12~million images & 54 & Screen and cameras, video sequences \\
+    Gaze360       & approx.\ \num{172000} images & 238 & Indoor and outdoor, many head poses and distances \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\section{Network Architectures for Gaze Regression}
+\label{sec:architekturen}
+% ------------------------------------------------------------------------------
+\subsection{Convolutional Neural Networks}
+\label{subsec:cnn}
+CNNs such as ResNet-18/50~\cite{he2016resnet}, VGG or MobileNet are the usual
+feature extractors for eye and face images. Their local convolutions detect
+fine textures and edges in the eye region. Special gaze models are also often
+based on CNNs: FAZE~\cite{park2019faze}, for example, uses a DenseNet-based
+encoder-decoder to separate gaze, head pose and appearance. This thesis uses
+ResNet-18.
+
+\subsection{Vision Transformers}
+\label{subsec:vit}
+Vision Transformers (ViTs)~\cite{dosovitskiy2021vit} split an image into small
+patches. With self-attention they capture relations across the whole image,
+for example between the face, the head rotation and the eyes.
+UniGaze~\cite{qin2026unigaze} shows that ViTs pretrained with MAE (sizes Base,
+Large and Huge) are very good backbones for gaze estimation.
+TTP-GE~\cite{nagpure2025ttpge}, in contrast, combines two ResNet-18 branches
+with a transformer fusion. GazeCLIP~\cite{wang2026gazeclip} shows that
+transformers are not always better: there, a CLIP-pretrained ResNet-50 reaches
+$3.5^\circ$ on MPIIFaceGaze, while the ViT-B/32 variant reaches only
+$3.7^\circ$. Ye et al.~\cite{ye2024transgaze}, on the other hand, show with
+\emph{TransGaze} that even plain ViTs with large-scale pretraining achieve very
+good results on GazeCapture and MPIIFaceGaze. Self-supervised DINO pretraining
+worked best there. One should therefore test CNNs and transformers equally and
+not assume that one architecture is generally better.
+
+\subsection{Pretrained Foundation Models}
+\label{subsec:foundation}
+In transfer learning, one uses a model that was pretrained on a very large
+number of images. Its features are useful in general. One can freeze the
+backbone and train only a small regression head on top. Four kinds of
+pretraining are important for this thesis:
+\begin{itemize}
+  \item \textbf{Supervised pretraining on ImageNet}: the model learns with
+        labels given by humans (here: object classes). This is the classical
+        starting point for CNNs such as ResNet~\cite{he2016resnet}. This
+        thesis uses such a model.
+  \item \textbf{DINOv2}~\cite{oquab2023dinov2}: learns robust features with
+        \emph{self-supervised learning}: the learning target comes from the
+        images themselves, without manual labels.
+  \item \textbf{CLIP}~\cite{radford2021clip}: learns image and text together
+        by contrastive learning on image-text pairs.
+  \item \textbf{Masked autoencoders (MAE)}~\cite{he2022mae}: learn by
+        reconstructing hidden parts of the image.
+\end{itemize}
+The next section describes how these features are used for gaze estimation.
+
+% ------------------------------------------------------------------------------
+\section{Pretrained Models for Gaze Estimation}
+\label{sec:pretrained}
+% ------------------------------------------------------------------------------
+\subsection{Frozen Backbone or Full Fine-Tuning}
+\label{subsec:frozen_full}
+There are two basic strategies to adapt a pretrained model to gaze estimation.
+In \emph{full fine-tuning}, all weights are trained. The model adapts most
+strongly, but it needs a lot of data. With little data there is a risk of
+overfitting or \emph{catastrophic forgetting}: the model loses what it learned
+during pretraining. With a \emph{frozen backbone} (for example ResNet-18 or
+ViT-B/14), the pretrained weights stay fixed. Only a small regression head is
+trained. This gives far fewer trainable parameters, and the general features
+are kept. This is important when only little calibration data is available.
+
+Kumar et al.~\cite{kumar2022finetuning} explain this trade-off in theory and
+with experiments. They compare full fine-tuning with \emph{linear probing},
+where only the last linear layer is trained. On ten datasets with distribution
+shift, fine-tuning is on average 2\,\% better on data like the training data,
+but 7\,\% worse on shifted data. The reason: when head and backbone are trained
+at the same time and the head is still random at the start, the pretrained
+features get distorted. The authors therefore propose LP-FT: first linear
+probing, then fine-tuning. This is directly relevant for personalization. The
+calibration data of one person are few and cover the later use only partly. A
+frozen backbone can protect the generalization here.
+
+The regression head is usually a multi-layer perceptron (MLP). It maps the
+features, for example the 512 numbers of a ResNet-18, to the coordinates
+$(x, y)$. Important choices are the output activation (for example sigmoid,
+Gaussian or ReLU) and the loss function (for example L1, smooth L1 or variants
+weighted by position). Between the two extremes there are parameter-efficient
+methods such as adapters or LoRA~\cite{hu2022lora} (\cref{subsec:peft}).
+
+\subsection{Large-Scale MAE Pretraining: UniGaze}
+\label{subsec:unigaze}
+Qin et al.~\cite{qin2026unigaze} present UniGaze, a large pretraining approach
+made specially for gaze estimation. With masked autoencoders, the model learns
+from about 1.6~million normalized face images of more than \num{260000}
+persons. The data come from real sources (VGGFace2, VFHQ, CelebV-Text) and from
+synthetic datasets (FaceSynthetics, SFHQ-T2I, FFHQ-NV, XGaze-Dense). A central
+result is how important data normalization is. Here, the face image and the
+gaze label are rotated and scaled into a common space. This removes a large
+part of the variation caused by head pose and distance. Zhang et
+al.~\cite{zhang2018normalization} were the first to study this method in
+detail. A variant without a scaling factor improves the accuracy by 9.5 to
+32.7\,\%, depending on the test. UniGaze confirms this: in the ablations
+(UniGaze-B, real pretraining data only, leave-one-dataset-out), normalization
+reduces the angular error on XTest from $14.56^\circ$ to $11.95^\circ$. With
+additional synthetic data, $11.78^\circ$ is reached.
+
+UniGaze uses ViTs of the sizes Base, Large and Huge. During pretraining, 75\,\%
+of the image is hidden. ViT-Huge is pretrained for 300 epochs, which takes
+about \SI{120}{\hour} on four NVIDIA H100 GPUs. Then the models are fully
+fine-tuned with L1 loss on MPIIFaceGaze, ETH-XGaze, EYEDIAP, Gaze360 and
+GazeCapture. The authors test three protocols:
+\begin{itemize}
+  \item \textbf{Domain generalization} (training on ETH-XGaze or Gaze360, test
+        on MPIIFaceGaze or the screen part of EYEDIAP): UniGaze-H reaches
+        $5.57^\circ$ (X$\rightarrow$M), $4.65^\circ$ (X$\rightarrow$ECS),
+        $5.65^\circ$ (G360$\rightarrow$M) and $5.86^\circ$
+        (G360$\rightarrow$ECS). This is better than other methods, for example
+        CLIP-Gaze with $6.41^\circ$, $7.51^\circ$, $6.89^\circ$ and
+        $7.06^\circ$.
+  \item \textbf{Leave-one-dataset-out} (training on four datasets, test on the
+        fifth): UniGaze-H reaches $11.29^\circ$ (XTest), $4.51^\circ$
+        (MPIIFaceGaze), $5.47^\circ$ (GazeCapture), $5.88^\circ$ (EYEDIAP) and
+        $12.37^\circ$ (Gaze360).
+  \item \textbf{Joint training on all datasets}: UniGaze-H reaches
+        $4.46^\circ$ (XTest), $5.08^\circ$ (MPIIFaceGaze), $3.20^\circ$
+        (GazeCapture), $5.16^\circ$ (EYEDIAP) and $9.07^\circ$ (Gaze360).
+\end{itemize}
+
+The ablations show: more pretraining data improve generalization, and real plus
+synthetic data are better than real data only. Normalization and many
+different head poses are also important. If the variety of head poses is
+limited, the error on XTest rises from $11.95^\circ$ to $16.70^\circ$.
+Comparisons with DINO and FaRL suggest that the composition of the data can be
+more important than their amount.
+
+\paragraph{Limitations.}
+UniGaze leaves some questions open that matter for personalization with
+webcams. The results are based on complete datasets and full fine-tuning, not
+on a short calibration with few images of one person. Lightweight strategies
+such as head-only training, LoRA or adapters are not the focus. The effect of
+wrong labels in short calibrations is not studied either. Pretraining also
+needs a lot of computing power (ViT-Huge: about \SI{120}{\hour} on
+$4\times$H100). It also remains open whether the improvements hold under real
+webcam conditions -- with glasses, changing backgrounds, low resolution and
+different webcams.
+
+\paragraph{Relevance for this thesis.}
+UniGaze is an important reference for gaze-specific pretraining. UniGaze
+studies generalization across many persons. This thesis asks the complementary
+question: how well can a pretrained model be adapted to one single person with
+a short calibration (here \SIrange{30}{120}{\second}, that is, about 180 to
+720 labels)? This thesis uses a ResNet-18 pretrained on ImageNet for this.
+UniGaze, DINOv2 and CLIP models are a natural next step
+(\cref{tab:unigaze_vergleich}).
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Comparison of UniGaze and this thesis.}
+  \label{tab:unigaze_vergleich}
+  \begin{tabularx}{\textwidth}{L{2.8cm} L{3.2cm} L{2.6cm} Y}
+    \toprule
+    \textbf{Criterion} & \textbf{UniGaze-H} & \textbf{UniGaze-B} & \textbf{This thesis} \\
+    \midrule
+    Pretraining data & 1.6~million face images, >\num{260000} persons & Same data & ImageNet (ResNet-18), regression head on GazeCapture \\
+    Backbone & ViT-Huge & ViT-Base & ResNet-18, frozen \\
+    Fine-tuning & Whole model & Whole model & Regression head only \\
+    Calibration data & Complete training datasets & Complete training datasets & \SIrange{30}{120}{\second} per session (approx.\ 180--720 labels) \\
+    Evaluation & Across datasets, domain generalization & Across datasets, domain generalization & Subject-disjoint base models, personalized webcam sessions \\
+    Wrong labels & No phase-based filtering & No phase-based filtering & \code{WAIT}/\code{MOVE} logging \\
+    Compute & Approx.\ \SI{120}{\hour} on $4\times$H100 & Only given for ViT-H & No pretraining; personalization approx.\ \SI{2}{\second} on a CPU \\
+    Angular error (leave-one-dataset-out) & $4.51^\circ$--$12.37^\circ$ & $4.73^\circ$--$12.41^\circ$ & Diagonal error in \%, not directly comparable \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Image-Text Models: CLIP-Gaze and GazeCLIP}
+\label{subsec:clip}
+Two recent works use the image-text model CLIP~\cite{radford2021clip} for gaze
+estimation, but with different goals.
+
+\paragraph{CLIP-Gaze.}
+Yin et al.~\cite{yin2024clipgaze} want to improve domain generalization with
+CLIP-Gaze. The model should stay good in a new environment without labelled
+data from that environment. The idea: factors that have nothing to do with
+gaze are described by texts, such as \enquote{An image of a face with
+\{condition\}.} These factors form three groups: appearance (identity, facial
+expression, hair, age, etc.), accessories (glasses, hat, make-up, etc.) and
+image quality (noise, blur, light). Three losses guide the training: a
+distillation loss aligns the gaze features with the CLIP image encoder. A
+separation loss makes them different from the gaze-irrelevant features. A rank
+loss makes sure that similar gaze directions also have similar features. In
+addition, \emph{Personalized Context Optimization} (PCO) adapts the texts to
+each person. CLIP stays frozen. A separate network of ResNet-18, an MLP filter
+and a regression head is trained. With ETH-XGaze and Gaze360 as source and
+MPIIFaceGaze and EyeDiap as target, CLIP-Gaze reaches about $6.97^\circ$ on
+average over four tasks.
+
+\paragraph{GazeCLIP.}
+Wang et al.~\cite{wang2026gazeclip} use coarse gaze information from text for
+supervised gaze regression. Without training (zero-shot), a prompt module uses
+texts such as \enquote{A photo of a face gazing [class]} to find a coarse
+direction from \{Front, Down, Left, Right\}. The image encoder is a
+CLIP-pretrained ResNet-50 and is fine-tuned. The text encoder (a transformer
+with 12 layers) stays frozen. A cross-attention module connects both: the text
+is the query, and the image features are key and value. An MLP with three
+layers ($1024 \rightarrow 256 \rightarrow 128 \rightarrow 2$) predicts pitch and
+yaw. GazeCLIP reaches $3.5^\circ$ on MPIIFaceGaze, $4.7^\circ$ on EyeDiap and
+$7.3^\circ$ on RT-GENE. Cross-attention ($3.6^\circ$) is better than simple
+concatenation ($4.2^\circ$) or addition ($4.4^\circ$). A fine-tuned image
+encoder with a frozen text encoder ($3.6^\circ$) is much better than two frozen
+encoders ($8.9^\circ$). Errors mainly occur in bad light and when hair or
+glasses cover the eyes. In addition, the zero-shot classification can give the
+wrong direction in a new environment.
+
+\paragraph{Limitations and relevance for this thesis.}
+Both works show that CLIP features are useful for gaze estimation. They do not
+study personalization with a short calibration, however. For CLIP-Gaze, it
+stays open whether adapting the CLIP image encoder improves the estimate for one
+person. GazeCLIP needs full supervised training on benchmark data. It covers
+neither personalization with few images nor wrong calibration labels, and
+according to the publication its data are only available on request. CLIP
+features were not yet studied in this thesis; they are a candidate for the
+outlook (\cref{tab:clip_vergleich}). The angular errors of these works are only
+reference values. They cannot be compared directly with the diagonal error of
+this thesis.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Comparison of CLIP-Gaze, GazeCLIP and this thesis.}
+  \label{tab:clip_vergleich}
+  \begin{tabularx}{\textwidth}{L{2.6cm} Y Y Y}
+    \toprule
+    \textbf{Aspect} & \textbf{CLIP-Gaze~\cite{yin2024clipgaze}} & \textbf{GazeCLIP~\cite{wang2026gazeclip}} & \textbf{This thesis} \\
+    \midrule
+    Goal & Domain generalization & Supervised gaze regression & Personalization with webcam and little data \\
+    Use of CLIP & Image and text encoder frozen & Image encoder fine-tuned, text encoder frozen & Not used (outlook) \\
+    Architecture & ResNet-18, MLP filter, regression head & CLIP ResNet-50, cross-attention, MLP & ResNet-18 (ImageNet), regression head \\
+    Labels of the target person & None & Complete training data & \SIrange{30}{120}{\second} calibration \\
+    Reported error & Approx.\ $6.97^\circ$ (mean of 4 tasks) & $3.5^\circ$ / $4.7^\circ$ / $7.3^\circ$ & Diagonal error in \% \\
+    Data quality & Models gaze-irrelevant factors & Coarse direction from text (uncertain) & \code{WAIT} frames are removed \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\section{Data-Efficient Personalization}
+\label{sec:personalisierung}
+% ------------------------------------------------------------------------------
+Generic models often have a systematic offset for new persons. It is caused by
+differences in the eye, the face shape and the head pose. Park et
+al.~\cite{park2019faze} speak of anatomical differences between persons that
+limit the accuracy of generic networks. Personalization tries to close this gap
+with as little calibration effort as possible. The following sections describe
+classical calibration, few-shot and meta-learning, and parameter-efficient
+methods.
+
+\subsection{Calibration Methods}
+\label{subsec:kalibrierung}
+In active calibration, the person looks at known points on the screen one after
+the other. The coordinates of these points are the labels for the adaptation.
+Typical are a few fixed points or a point that moves across the screen.
+iTracker~\cite{krafka2016itracker} uses up to 13 fixed points and trains one
+SVR per user on them (\cref{subsec:dl_pioniere}). He et
+al.~\cite{he2019ondevice} show that good methods with only 2 to 5 points per
+person are better than earlier methods with more than 13 points. On
+smartphones, their best model with at most five points is 24 to 26\,\% more
+accurate than the state of the art at that time and runs in real time on the
+device. They also propose a method that needs only unlabelled face images.
+Valliappan et al.~\cite{valliappan2020smartphone} use, in addition to points, a
+\emph{zigzag calibration}: a target moves slowly for 60~seconds from top left
+to bottom right while the front camera records at \SI{30}{\hertz}. Already
+about 100 images reduce the error almost to one quarter.
+
+The methods differ not only in \emph{how much} data they need, but also in
+\emph{which part} of the model they adapt:
+\begin{itemize}
+  \item \textbf{Offset calibration:} Chen and Shi~\cite{chen2020offset} split
+        the gaze angle into a part that is the same for all persons and a
+        personal offset (bias). They observe that the offset between persons is
+        larger than the variation within one person. The calibration then
+        needs only one gaze point. On MPIIGaze and EYEDIAP, the method is up to
+        10\,\% better than comparable models. Already about nine calibration
+        images reduce the error clearly.
+  \item \textbf{Few person parameters:} Lindén et al.~\cite{linden2019spaze}
+        describe personal differences with the \emph{Spatial Adaptive Gaze
+        Estimator} (SPAZE) by a few latent parameters. Calibration is then only
+        a small optimization problem and hardly prone to overfitting. With nine
+        examples, SPAZE reaches $2.70^\circ$ on MPIIGaze, 14\,\% better than
+        the state of the art at that time. Three parameters per eye are enough
+        to describe the personal differences well.
+  \item \textbf{Differential estimation:} Liu et
+        al.~\cite{liu2021differential} train a CNN that predicts the
+        \emph{difference} in gaze between two eye images of the same person.
+        Together with labelled reference images from the calibration, this
+        gives the gaze in the new image. Because both images come from the same
+        person, disturbances such as eye shape, eyelid closure or light partly
+        cancel out. On EYEDIAP, MPIIGaze and UT-Multiview, the method beats the
+        state of the art with only one calibration image.
+  \item \textbf{Personalization without calibration:} Zhao et
+        al.~\cite{zhao2022ebpn} propose the \emph{Episode-based Personalization
+        Network} (EbPN). A separate branch of the network should compensate
+        personal deviations without calibration data.
+\end{itemize}
+Together, these works show: a large part of the personal error can be explained
+with a few adapted parameters. This supports the strategy of this thesis to
+adapt only a small regression head on a frozen backbone.
+
+Cheng et al.~\cite{cheng2024review} name a basic trade-off: longer
+calibrations make the estimate more accurate, but they are less convenient.
+High accuracy with a short and easy calibration is therefore an open research
+question. Another point is often overlooked: the quality of the calibration
+labels themselves. When a target jumps, the gaze follows only after a short
+delay. Frames from this transition can have a wrong label
+(\cref{sec:label_noise}).
+
+\subsection{Few-Shot Learning and Meta-Learning: FAZE}
+\label{subsec:faze}
+Park et al.~\cite{park2019faze} present FAZE (\emph{Few-Shot Adaptive Gaze
+Estimation}), an influential method for personalization with few calibration
+images. It combines separated (disentangled) features for gaze, head and
+appearance with Model-Agnostic Meta-Learning (MAML). FAZE does not train a new
+model for every person. Instead, it learns a starting point from which a few
+examples are enough for a fast adaptation.
+
+FAZE has two parts. A \emph{Disentangling Transforming Encoder-Decoder}
+(DT-ED) based on DenseNet represents appearance, gaze direction and head pose
+in separate codes. Because these codes rotate together with the input
+(rotation-equivariant), changes of gaze and head can be described as rotations
+in feature space. Training uses image pairs of the same person with a
+reconstruction loss, a gaze loss and a consistency term. The second part is a
+gaze estimator that is meta-trained with MAML: over many training persons it
+learns a starting point from which a few gradient steps produce a personal
+model. This should avoid overfitting, which is a risk for normal fine-tuning
+with very little data.
+
+FAZE is trained on GazeCapture and tested on GazeCapture and MPIIGaze. With
+$k = 9$ calibration images, the mean error on MPIIGaze is $3.14^\circ$. For all
+$1 \le k \le 256$, FAZE is better than the compared methods. On GazeCapture,
+the error drops by 19\,\% compared with the state of the art, from
+$3.91^\circ$ to $3.18^\circ$.
+
+\paragraph{Limitations and differences.}
+FAZE shows that calibration depends not only on the amount of data, but also on
+the features learned before and on the type of adaptation. The features of
+FAZE, however, come from supervised training with gaze data and a DenseNet.
+General pretrained models (DINOv2, MAE, CLIP) are not studied. The adaptation
+uses meta-learning; simpler ways such as head-only training, LoRA or adapters
+are not the focus. Webcam-specific problems such as changing image quality,
+glasses, backgrounds and different cameras are not considered either, and
+neither is the removal of calibration frames by recording phase. This thesis
+takes up some of these points. Because FAZE reports angular errors and this
+thesis uses an error relative to the screen diagonal, the numbers are not
+directly comparable.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Comparison of FAZE and this thesis.}
+  \label{tab:faze_vergleich}
+  \begin{tabularx}{\textwidth}{L{3.0cm} Y Y}
+    \toprule
+    \textbf{Aspect} & \textbf{FAZE~\cite{park2019faze}} & \textbf{This thesis} \\
+    \midrule
+    Goal & Personalization of the gaze direction with few images & Data-efficient personalization of the screen position with a webcam \\
+    Features & Disentangled codes, DenseNet encoder-decoder & ResNet-18, pretrained on ImageNet and frozen \\
+    Pretraining & Supervised on GazeCapture & ImageNet; regression head on GazeCapture \\
+    Adaptation & MAML and gradient steps per person & Regression head only \\
+    Calibration data & $k = 1$ to $256$ images & \SIrange{30}{120}{\second} (approx.\ 180--720 labels) \\
+    Label quality & No phase-based filtering & \code{WAIT} frames removed via phase logging \\
+    Evaluation & GazeCapture and MPIIGaze & 18 webcam sessions under changing conditions \\
+    Reported error & $3.14^\circ$ (MPIIGaze, $k = 9$) & Diagonal error in \%, not directly comparable \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Yu et al.~\cite{yu2019redirection} extend adaptation with few images: from a
+few reference images of a person they create additional training images by gaze
+redirection and use them to adapt a generic model.
+
+\subsection{Parameter-Efficient Fine-Tuning (PEFT)}
+\label{subsec:peft}
+Parameter-efficient methods adapt only a small part of the parameters. The
+pretrained backbone stays almost unchanged. This saves memory and computing
+time and lowers the risk of overfitting when only little calibration data is
+available. Three variants are important for this thesis:
+\begin{itemize}
+  \item \textbf{Head-only training (FC only):} The backbone stays completely
+        frozen; only the regression head is trained. The backbone features can
+        be computed once and stored. This makes the method especially fast.
+        This thesis uses it.
+  \item \textbf{Adapters}~\cite{houlsby2019adapter}: Small extra modules are
+        inserted between the layers of a frozen network. Only they are
+        trained.
+  \item \textbf{Low-Rank Adaptation (LoRA)}~\cite{hu2022lora}: The pretrained
+        weight matrices $W$ stay fixed. Only a change $\Delta W = BA$ made of
+        two narrow matrices with low rank $r$ is trained. This gives far fewer
+        trainable parameters.
+\end{itemize}
+In gaze estimation, such methods have hardly been studied systematically. One
+exception is TPGaze~\cite{liu2024tpgaze}. It transfers prompt tuning from
+language processing: an extra prompt with less than 1\,\% of the parameters of
+a ResNet-18 is adapted at test time without labels. Meta-learning makes sure
+that this adaptation really lowers the gaze error (\cref{sec:tta}). Bao and
+Lu~\cite{bao2024feature2gaze} also show that especially the last fully
+connected layer, which maps many image features to the gaze, overfits easily.
+So the design of the head matters even for head-only training. The other works
+discussed here use full fine-tuning (UniGaze, GazeCLIP), meta-learning (FAZE)
+or a frozen model that guides a separately trained network (CLIP-Gaze). This
+thesis studies head-only training for personalization with short webcam
+calibrations. Adapters and LoRA are left for future work.
+
+% ------------------------------------------------------------------------------
+\section{Domain Shift, Generalization and Evaluation Protocols}
+\label{sec:domain_shift}
+% ------------------------------------------------------------------------------
+\subsection{Evaluation with Unknown Persons}
+\label{subsec:norm_subject}
+How well a model generalizes to new persons depends strongly on the evaluation
+protocol. With a random split (\code{norm\_random}), images of the same person
+can end up in training and test. In this thesis, groups of person and target
+point are split: all frames in which a person looks at the same point are
+either in training or in test, but the same person appears in both parts. The model can then use
+features of this person, and generalization is overestimated. With a
+subject-disjoint split (\code{norm\_subject}), the persons are split instead
+(here \SI{80}{\percent} training, \SI{20}{\percent} test): all frames of a
+person are only in training or only in test. Then this data leakage does not
+exist (similar to leave-one-subject-out). One then measures the performance on truly
+unknown persons. In the base experiments of this thesis on GazeCapture,
+\code{norm\_subject} gives a test error of \SI{28.39}{\percent} and
+\code{norm\_random} \SI{27.72}{\percent}. Most of this difference, however,
+comes from the different test data: the constant baseline is also lower on
+\code{norm\_random} (\SI{27.66}{\percent} instead of \SI{28.46}{\percent}, see
+Chapter~4).
+
+Tests across datasets are a different case, for example leave-one-dataset-out
+in UniGaze~\cite{qin2026unigaze}. There, a whole dataset is held back. The two
+protocols therefore measure different kinds of generalization: to unknown
+persons in the same environment, or to unknown recording conditions.
+
+\subsection{Domain Adaptation and Domain Generalization}
+\label{subsec:domain_adaptation}
+When training and test data differ in persons, cameras or environment,
+appearance-based methods become much worse. There are two counter-strategies.
+Domain adaptation uses (usually unlabelled) data from the target environment.
+Domain generalization needs no target data at all.
+
+\paragraph{CRGA.}
+Wang et al.~\cite{wang2022crga} propose \emph{Contrastive Regression Gaze
+Adaptation} (CRGA), an unsupervised domain adaptation method. A module for
+\emph{Contrastive Domain Generalization} (CDG) learns stable features in the
+source domain: features with similar gaze are pulled together, features with
+very different gaze are pushed apart. A module for \emph{Contrastive
+Self-training Adaptation} (CSA) then learns with pseudo-labels in the target
+domain. With ETH-XGaze and Gaze360 as source and MPIIGaze, RT-GENE, GazeCapture
+and EyeDiap as target, the authors improve the baseline by 40.4\,\%, 34.7\,\%,
+55.8\,\% and 34.3\,\% (source ETH-XGaze) and by 31.7\,\%, 30.5\,\%, 32.9\,\%
+and 23.8\,\% (source Gaze360).
+
+CRGA therefore solves a different problem: adaptation to a new environment
+without labelled target data. This thesis, in contrast, uses a few labelled
+calibration data of the target person. This allows supervised training with
+real labels, not only with pseudo-labels. Self-training with pseudo-labels can
+also create a confirmation bias: wrong predictions are reinforced in further
+training. In addition, this thesis is about differences between persons and
+not about switching between benchmark datasets. CRGA is therefore related work
+on robustness, but not a directly comparable baseline.
+
+\paragraph{Domain generalization.}
+Methods such as PureGaze~\cite{cheng2022puregaze} or
+CLIP-Gaze~\cite{yin2024clipgaze} (\cref{subsec:clip}) try to remove
+gaze-irrelevant factors from the features already during training. Then the
+model also works in new environments without target data.
+UniGaze~\cite{qin2026unigaze} shows that large gaze-specific pretraining can
+beat these methods in tests across datasets (\cref{subsec:unigaze}).
+
+\subsection{Gaze Estimation for Several Persons}
+\label{subsec:gazeonce}
+Zhang et al.~\cite{zhang2022gazeonce} present GazeOnce, a one-stage method. It
+estimates the gaze of all persons in an image in a single pass and stays
+real-time even with more than ten faces. Besides the gaze direction, it also
+predicts face boxes and facial landmarks. A self-supervised loss checks whether
+the estimated 3D direction fits its 2D projections. For training, the authors
+create the synthetic dataset MPSGaze: they insert faces from ETH-XGaze with
+known gaze into matching faces from WiderFace. According to the authors,
+GazeOnce is more accurate and faster than existing methods, especially with
+many faces.
+
+GazeOnce therefore solves a different problem: the gaze of many persons in
+free scenes, not personalization for one webcam user. Methodically interesting
+is the consistency between the 3D direction and its 2D projection. MPSGaze also
+shows that synthetic training data can differ from real webcam images.
+
+\subsection{Differences in Devices and Environment}
+\label{subsec:geraete}
+Besides differences between datasets, many factors of device and environment
+affect the accuracy: glasses and occlusions, background and light, image
+resolution and camera distance, and the position of camera and screen. The
+literature gives some hints:
+\begin{itemize}
+  \item Cheng et al.~\cite{cheng2024review} observe much larger errors at large
+        distance and low resolution (Gaze360, RT-GENE).
+  \item GazeCLIP~\cite{wang2026gazeclip} names bad light and occlusion by hair
+        or glasses as typical failure cases.
+  \item UniGaze~\cite{qin2026unigaze} stresses how important many different
+        head poses and a wide range of gaze labels are.
+  \item CLIP-Gaze~\cite{yin2024clipgaze} explicitly models accessories and
+        image quality as gaze-irrelevant factors.
+\end{itemize}
+Systematic studies of these factors for personalization with short webcam
+calibrations are still largely missing. This thesis therefore also looks at
+two devices with different webcams, glasses, background and calibration
+length across several sessions (see Chapter~4).
+
+% ------------------------------------------------------------------------------
+\section{Test-Time Adaptation}
+\label{sec:tta}
+% ------------------------------------------------------------------------------
+In test-time adaptation (TTA), a fully trained model is adapted to the person or
+the environment only during use, usually with few or no labels. Unlike classical
+calibration (\cref{subsec:kalibrierung}), the user should have to do as little
+as possible.
+
+\subsection{TTP-GE: Self-Supervised and Weakly Supervised Adaptation}
+\label{subsec:ttpge}
+Nagpure et al.~\cite{nagpure2025ttpge} present TTP-GE (\emph{Test-Time
+Personalized Gaze Estimation}), a two-stage method for gaze estimation in the
+car. It is based on GazeDPTR~V2. This architecture has two branches: one for
+the original face image and one for a normalized face image. A transformer
+combines the features. With position information from a point projection, the
+model can also recognize gaze zones.
+
+Meta-training uses two loops based on MAML. In the inner loop, a
+self-supervised consistency loss (in the style of BYOL++) adapts the model to
+new persons -- without gaze labels. The outer loop optimizes gaze regression
+and zone recognition with labelled data. At test time there are two steps:
+first, the model adapts in a self-supervised way to unlabelled images of the
+person; this helps with changed image conditions. Then the zone recognition is
+adapted with a few zone labels (for example mirror, dashboard, windscreen).
+These labels are collected in a short setup phase.
+
+On IVGaze (\num{44705} images of 125 persons), the combination reaches a mean
+error of $6.00^\circ$. The baseline is at $6.78^\circ$, \emph{weakly supervised
+adaptation} alone (here with a few coarse zone labels) at $6.13^\circ$ and
+\emph{self-supervised adaptation} alone (without any labels) at $6.72^\circ$. The share of estimates with less than $6^\circ$ error rises from
+49.95\,\% to 58.2\,\%. So the two steps complement each other: self-supervision
+handles the image conditions, and the zone labels provide personal
+information.
+
+\subsection{Other Label-Saving Methods}
+\label{subsec:tta_weitere}
+Some recent works pursue similar goals with other means:
+\begin{itemize}
+  \item \textbf{TPGaze}~\cite{liu2024tpgaze} adapts only a meta-learned prompt
+        at test time. It has less than 1\,\% of the parameters of a ResNet-18.
+        A simple symmetry loss is enough as a goal without labels. According to
+        the authors, the adaptation is up to ten times faster than other
+        methods. It is tested in four scenarios across datasets.
+  \item \textbf{ELF-UA}~\cite{wu2024elfua} treats adaptation \emph{without
+        labels} as its own problem: a few unlabelled images of the person are
+        enough. Meta-learning uses a bound from domain adaptation as the loss
+        function.
+  \item \textbf{PIGaze}~\cite{wang2026pigaze} obtains calibration data in the
+        car automatically: the gaze at known zones such as mirror and
+        windscreen must fit together geometrically (self-calibration). A
+        pretrained base model is a \emph{frozen} feature extractor. On top, a
+        small adapter learns the personal mapping. On IVGaze and LBW, PIGaze is
+        better than fine-tuning.
+\end{itemize}
+
+\paragraph{Limitations and differences.}
+These methods want to reduce calibration effort with unlabelled or weakly
+labelled data. They mostly estimate 3D gaze directions and, for TTP-GE and
+PIGaze, work in the car with fixed zones. Their adaptation (meta-training,
+online updates, EMA target networks) is much more complex than simple head
+training. General pretrained models such as DINOv2, CLIP or MAE are not studied
+as backbones. This thesis follows the complementary path of \emph{supervised}
+personalization with screen coordinates from a short calibration. It is
+interesting, however, that PIGaze -- like this thesis -- combines a frozen
+backbone with a small, personally trained module.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Comparison of TTP-GE and this thesis.}
+  \label{tab:ttpge_vergleich}
+  \begin{tabularx}{\textwidth}{L{3.0cm} Y Y}
+    \toprule
+    \textbf{Aspect} & \textbf{TTP-GE~\cite{nagpure2025ttpge}} & \textbf{This thesis} \\
+    \midrule
+    Approach & Test-time adaptation with unlabelled images and a few zone labels & Supervised personalization with labelled calibration data \\
+    Backbone & GazeDPTR~V2: two ResNet-18 branches with transformer fusion & ResNet-18 (ImageNet), frozen \\
+    Labels & Unlabelled images and nine gaze zones & Screen coordinates; \code{WAIT} frames are removed \\
+    Adaptation & Meta-training, online updates, EMA target network & Regression head only \\
+    Application & Driver monitoring in the car & Webcam in front of a screen \\
+    Result & $6.00^\circ$ on IVGaze & Diagonal error in \%, not directly comparable \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\section{Data Quality, Wrong Labels and Timing}
+\label{sec:label_noise}
+% ------------------------------------------------------------------------------
+Supervised personalization assumes that every calibration frame has the right
+label, that is, the point the person really looks at in this moment. In
+practice this is only roughly true. Differences between label and real gaze are
+called \emph{label noise}. In short calibrations it is especially harmful,
+because every wrong frame is a large part of the training data.
+
+\subsection{Data Quality in Eye Tracking}
+\label{subsec:datenqualitaet}
+In eye-tracking research, data quality is usually described by three measures.
+Niehorster et al.~\cite{niehorster2026quality} give a recent overview of how to
+measure them and provide tools for it. For $N$ measurements in which the person
+looks at a known target:
+\begin{itemize}
+  \item \textbf{Accuracy}: the \emph{systematic} deviation between measured
+        and true gaze point, usually as mean angular error
+        \[
+          \mathrm{Acc} = \frac{1}{N}\sum_{i=1}^{N} \theta_i ,
+        \]
+        where $\theta_i$ is the angle between measured and true gaze.
+  \item \textbf{Precision}: the \emph{spread} of repeated measurements,
+        independent of the true target. A common measure is the RMS value
+        between consecutive measurements
+        \[
+          \mathrm{RMS\text{-}S2S} = \sqrt{\frac{1}{N-1}\sum_{i=1}^{N-1} \theta_{i,i+1}^{2}} ,
+        \]
+        with $\theta_{i,i+1}$ as the angle between measurement $i$ and $i+1$,
+        or the standard deviation of the measurements around their mean.
+  \item \textbf{Data loss}: the share of measurements without a valid gaze
+        value, $\mathrm{DL} = N_{\text{invalid}} / N \cdot \SI{100}{\percent}$.
+\end{itemize}
+The difference: an eye tracker can be precise but inaccurate (the measurements
+lie close together but next to the target), or accurate but imprecise (the
+mean is right, but the measurements spread a lot). The diagonal error of this
+thesis is an RMSE and therefore contains both: the systematic deviation and the
+spread. For learning methods, a
+fourth measure is added: the quality of the \emph{training labels}. Wrong
+labels distort not only the evaluation but also the learned model.
+
+\subsection{Reaction Time and Saccades}
+\label{subsec:latenz}
+When a calibration target appears at a new place, the gaze does not follow at
+once. There is a short reaction time before the \emph{saccade} (a very fast eye
+movement to a new target) starts.
+Valliappan et al.~\cite{valliappan2020smartphone} measure on smartphones a mean
+of \SI{210}{\milli\second} (median \SI{167}{\milli\second}). This fits earlier
+studies with \SIrange{200}{250}{\milli\second}. Then follow the saccade itself
+and possibly small corrections until the eye rests on the target.
+
+Frames from this \emph{transition period} have the label of the \emph{new}
+position. The gaze,
+however, is still on the \emph{old} position or somewhere in between. At
+\SI{30}{fps}, a reaction time of about \SI{200}{\milli\second} alone affects
+about six frames per jump. The more often the target jumps, the more frames
+have a wrong label.
+
+\subsection{Filtering During Recording}
+\label{subsec:phase_logging}
+A simple counter-measure: discard the frames directly after a target change.
+Valliappan et al.~\cite{valliappan2020smartphone}, for example, always discard
+the first \SI{800}{\milli\second} after each new target. A fixed time window is
+easy to implement. But it is based on an assumption about the length of the
+transition, and its effect is usually not studied on its own.
+
+This thesis takes a similar but more precise path. The recording program stores
+the current \emph{phase} of the target for every frame: \code{WAIT} (a short
+waiting time of \SI{0.5}{\second} directly after a jump) or \code{MOVE} (the
+target then moves for \SI{4.5}{\second}). This makes it possible to identify
+the \code{WAIT} frames exactly and reproducibly and to remove them before
+training. In the recordings, this affects about 10\,\% of the frames. Unlike a
+fixed time window, this logging allows a direct comparison: models with and
+without cleaned data under otherwise equal conditions.
+
+\subsection{Filtering After Recording and Robust Learning}
+\label{subsec:dmrf}
+Other methods detect wrong labels only \emph{after} recording, with statistical
+or model-based criteria.
+
+\paragraph{DMRF.}
+Jiang et al.~\cite{jiang2026dmrf} propose \emph{Dynamic Multi-model Regression
+Filtering} (DMRF), a general method against wrong labels in regression tasks.
+It solves a \emph{chicken-and-egg problem} (two things depend on each other,
+so it is unclear where to start): wrong labels distort the models used to
+estimate the noise, and distorted models estimate the noise wrongly. DMRF has
+three parts:
+\begin{enumerate}
+  \item a \emph{warm-up filtering} with a distribution function of the
+        estimated errors,
+  \item a \emph{dynamic model selection} based on a correlation criterion,
+  \item a \emph{data recall} step that brings examples with small loss back to
+        the clean data.
+\end{enumerate}
+Besides 15 benchmarks from UCI and KEEL and an age estimation task, DMRF is
+built into the gaze method L2CS-Net. On a pre-processed MPIIGaze dataset with
+\num{45000} images (leave-one-person-out), the mean error drops from
+$3.92^\circ$ to $3.85^\circ$, while 74.3\,\% of the data are kept. The code is
+public.
+
+\paragraph{SeeTN.}
+Peng et al.~\cite{peng2026seetn} are the first to study systematically how
+wrong labels affect domain generalization in gaze estimation. In a pilot
+experiment they corrupt 10, 20 and 30\,\% of the Gaze360 labels with strong
+Gaussian noise. The error of a ResNet-18 baseline on MPIIGaze then rises from
+$7.94^\circ$ to $12.17^\circ$ (20\,\%) and $14.38^\circ$ (30\,\%). Their method
+\emph{See-Through-Noise} builds a semantic feature space. It detects wrong
+examples when feature and label do not fit together, and it transfers gaze
+information from clean to noisy examples.
+
+\paragraph{Filter before or after?}
+Methods such as DMRF and SeeTN detect wrong labels from the data themselves.
+They therefore also find unexpected sources of error. But they need enough
+examples for a reliable estimate, compute more, and have so far only been tested
+on large datasets, not on short calibrations of one person. Phase logging, in
+contrast, only covers one \emph{known} source of error that comes from the
+recording procedure -- but it does so exactly and without an extra model. The
+two approaches complement each other (\cref{tab:dmrf_vergleich}).
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Comparison of filtering after recording (DMRF) and phase logging.}
+  \label{tab:dmrf_vergleich}
+  \begin{tabularx}{\textwidth}{L{3.0cm} Y Y}
+    \toprule
+    \textbf{Criterion} & \textbf{DMRF~\cite{jiang2026dmrf}} & \textbf{This thesis} \\
+    \midrule
+    Strategy & After: estimate errors and filter & Before: store the phase during recording \\
+    Detection & Model predictions, error patterns, dynamic model selection & \code{WAIT}/\code{MOVE} label per frame \\
+    Errors covered & All statistically unusual examples & Only the transition after a jump \\
+    Data kept & 74.3\,\% (MPIIGaze) & Approx.\ 90\,\% \\
+    Application & Many persons, leave-one-person-out & Webcam calibration of one person \\
+    Extra effort & Several regression models, iterative training & No extra model \\
+    Result & $3.92^\circ \rightarrow 3.85^\circ$ & Diagonal error in \%, not directly comparable \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ------------------------------------------------------------------------------
+\section{Comparison and Critical Discussion}
+\label{sec:vergleich}
+% ------------------------------------------------------------------------------
+\Cref{tab:sota_vergleich} summarizes the most important works of this chapter.
+The columns are: goal, features used, type of personalization and handling of
+label quality.
+
+\begin{table}[htbp]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \caption[Comparison of the most important works]{Comparison of the most important works. $k$ = number of calibration images per person. The errors come from different protocols and metrics and are not directly comparable.}
+  \label{tab:sota_vergleich}
+  \begin{tabularx}{\textwidth}{L{2.3cm} L{2.4cm} L{2.6cm} L{2.6cm} Y L{1.9cm}}
+    \toprule
+    \textbf{Work} & \textbf{Goal} & \textbf{Features} & \textbf{Personalization} & \textbf{Label quality} & \textbf{Result} \\
+    \midrule
+    iTracker~\cite{krafka2016itracker} & 2D gaze, mobile & CNN branches similar to AlexNet & SVR, up to 13 points & -- & \SI{1.34}{\centi\metre} (smartphone) \\
+    FAZE~\cite{park2019faze} & Few images & DenseNet DT-ED, supervised & MAML, $k \le 256$ & -- & $3.14^\circ$ ($k=9$) \\
+    SPAZE~\cite{linden2019spaze} & Few images & CNN, latent person parameters & Small optimization problem & -- & $2.70^\circ$ ($k=9$) \\
+    Chen \& Shi~\cite{chen2020offset} & Offset calibration & CNN & Offset from one gaze point & -- & up to 10\,\% better \\
+    Valliappan~\cite{valliappan2020smartphone} & Smartphone & CNN, pretrained on GazeCapture & Fine-tuning + regression, approx.\ 30\,s & Fixed 800-ms discard & \SI{0.46}{\centi\metre} \\
+    CRGA~\cite{wang2022crga} & Unsupervised DA & ResNet (ImageNet) & Pseudo-labels & -- & up to 55.8\,\% better \\
+    UniGaze~\cite{qin2026unigaze} & Generalization & MAE-ViT, 1.6~million faces & Full fine-tuning & -- & $4.65$--$5.86^\circ$ (DG) \\
+    CLIP-Gaze~\cite{yin2024clipgaze} & Generalization & CLIP (frozen) + ResNet-18 & -- & Gaze-irrelevant factors & $6.97^\circ$ (DG) \\
+    GazeCLIP~\cite{wang2026gazeclip} & Supervised regression & CLIP ResNet-50 (fine-tuned) & -- & -- & $3.5^\circ$ (MPIIFaceGaze) \\
+    TTP-GE~\cite{nagpure2025ttpge} & Test-time adaptation & GazeDPTR~V2 & Self- + weakly supervised & -- & $6.00^\circ$ (IVGaze) \\
+    TPGaze~\cite{liu2024tpgaze} & Test-time adaptation & ResNet-18 & Prompt (<1\,\% of parameters) & -- & -- \\
+    DMRF~\cite{jiang2026dmrf} & Filter wrong labels & L2CS-Net & -- & After, model-based & $3.85^\circ$ (MPIIGaze) \\
+    SeeTN~\cite{peng2026seetn} & Robust generalization & ResNet-18/50 & -- & After, feature-based & -- \\
+    \midrule
+    \textbf{This thesis} & Webcam personalization & ResNet-18 (ImageNet), frozen & Head only; \SIrange{30}{120}{\second} & Before, phase logging & Diagonal error in \% \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\paragraph{Critical discussion.}
+The comparison leads to four observations:
+\begin{enumerate}
+  \item \textbf{Features and personalization are studied separately.} Works on
+        large pretrained models (UniGaze, CLIP-Gaze, GazeCLIP) aim at
+        generalization across datasets and use full fine-tuning with a lot of
+        data. Works on personalization (FAZE, SPAZE, Chen \& Shi), in contrast,
+        use CNNs that were trained specially for gaze. How well general
+        pretrained models can be personalized with little calibration data is
+        still open.
+  \item \textbf{Few parameters are often enough.} Offset calibration, few person
+        parameters, prompt tuning and frozen models with adapters (PIGaze) all
+        show: a large part of the personal error can be explained with a few
+        adapted parameters. Kumar et al.~\cite{kumar2022finetuning} give a
+        general reason for this.
+  \item \textbf{Wrong labels are usually handled afterwards.} DMRF and SeeTN
+        filter or weight wrong labels in large datasets. Errors caused by the
+        procedure of short calibrations are handled, if at all, with fixed time
+        windows (Valliappan et al.), without studying their effect in detail.
+  \item \textbf{The results are hard to compare.} The works report angles in
+        degrees, distances in centimetres or relative improvements, and they use
+        different datasets, splits and protocols. An angular error can only be
+        converted into a screen error if the geometry (distance, screen size)
+        is known. The metric of this thesis, the Euclidean error relative to the
+        screen diagonal, is therefore not directly comparable with the
+        literature. The numbers in \cref{tab:sota_vergleich} are for
+        orientation, not a ranking.
+\end{enumerate}
+
+% ------------------------------------------------------------------------------
+\section{Research Gaps and Link to This Thesis}
+\label{sec:luecken}
+% ------------------------------------------------------------------------------
+\subsection{Research Gaps}
+\label{subsec:luecken}
+The state of the art shows four research gaps:
+
+\begin{enumerate}[label=\textbf{G\arabic*:}, leftmargin=*, align=left]
+  \item \textbf{Data-efficient personalization of pretrained models.}
+  Large pretrained models (ImageNet CNNs, DINOv2, CLIP, MAE or UniGaze) have so
+  far been studied for gaze estimation mainly with full fine-tuning on large
+  datasets. Studies on how well they can be adapted to one person with only a
+  few minutes of webcam calibration are missing.
+
+  \item \textbf{Lightweight adaptation for personalization.}
+  Several works show that a few adapted parameters capture most of the personal
+  error. Still, head-only training, adapters and LoRA have hardly been compared
+  systematically for personalization in gaze estimation.
+
+  \item \textbf{Label quality of short calibrations.}
+  Reaction time and target changes produce calibration frames with a wrong
+  label. Existing work mostly handles wrong labels afterwards in large datasets
+  or discards fixed time windows. How an exact, protocol-based removal of such
+  frames affects personalization has not been studied yet.
+
+  \item \textbf{Realistic evaluation under webcam conditions.}
+  Many results come from benchmarks with controlled conditions or from random
+  splits on image level, which can overestimate generalization. How camera,
+  glasses, background and calibration length affect personalization is
+  hardly documented.
+\end{enumerate}
+
+\subsection{What This Thesis Contributes}
+\label{subsec:ueberleitung}
+This thesis addresses the gaps with a simple and reproducible personalization
+pipeline for webcam eye tracking:
+
+\begin{itemize}
+  \item \textbf{Frozen backbone with a small regression head (G1, G2):} A
+        ResNet-18 pretrained on ImageNet stays frozen. Its features are stored,
+        and only a small regression head is trained per person. I also test whether
+        training more layers helps. Other backbones (DINOv2, CLIP, MAE,
+        UniGaze) and adapters or LoRA are the next step (Chapter~6).
+  \item \textbf{Phase logging and cleaning (G3):} The recording program stores
+        the phases \code{WAIT} and \code{MOVE}. This allows a controlled
+        measurement of the effect of removing transition frames: models with
+        original and with cleaned data are compared under otherwise equal
+        conditions.
+  \item \textbf{Systematic ablations:} Batch size, learning rate, trainable
+        layers, activation, loss function (including an L1 loss weighted by
+        position) and amount of data are studied with repeated runs and
+        confidence intervals.
+  \item \textbf{Realistic evaluation (G4):} The base models are evaluated with
+        the subject-disjoint split \code{norm\_subject}. Personalization is
+        tested on 18 sessions with changing webcam (two devices), glasses,
+        background and calibration length, with both a random and a temporal
+        split.
+\end{itemize}
+
+Chapter~3 describes the methodology and Chapter~4 the results. Chapter~5 uses
+them to answer the research questions from Chapter~1.
+
+% ==============================================================================

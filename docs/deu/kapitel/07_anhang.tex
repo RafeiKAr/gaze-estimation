@@ -1,0 +1,52 @@
+% ==============================================================================
+% 07_anhang.tex – Anhang (wird nach dem Literaturverzeichnis eingebunden)
+% ==============================================================================
+\appendix
+\chapter{Anhang}
+\label{ch:anhang}
+
+\section{Befehle zum Wiederholen der Experimente}
+\label{sec:anhang_befehle}
+Alle Befehle werden im Hauptordner des Projekts ausgeführt (siehe auch
+\code{README.md}).
+
+\paragraph{Daten vorbereiten.}
+\begin{verbatim}
+python main.py
+\end{verbatim}
+
+\paragraph{Baselines und Hyperparameterstudie (GazeCapture).}
+\begin{verbatim}
+python exp.py --experiment baseline
+python exp.py --experiment all --sample-seed 0 --val-size 200
+python exp.py --experiment trainable_layers --include-resnet
+\end{verbatim}
+
+\paragraph{Räumliche Analyse und Abbildungen.}
+\begin{verbatim}
+python spatial_analysis.py --input results/heatmap/base_loss1.csv \
+       --compare results/heatmap/base_loss2.csv --out results/figures
+python plot_targets.py --out results/figures
+\end{verbatim}
+
+\paragraph{Personalisierung (E0--E3).}
+\begin{verbatim}
+python train_base.py
+python personal_exp.py --sessions all --base norm_subject norm_random
+python personal_exp.py --sessions gen4 --labels clean
+python personal_exp.py --sessions 21 22 --split random --seeds 42 43 44
+python personal_exp.py --sessions 21 22 --split sequential --seeds 42 43 44
+python personal_exp.py --split two_videos --pairs 21:22,22:21 --seeds 42 43 44
+python personal_exp.py --sessions all --split sequential
+python personal_exp.py --summary
+\end{verbatim}
+
+\paragraph{Gestaltung der Sitzungen und bereinigte Labels.}
+\begin{verbatim}
+python session_design.py
+python session_design.py --write-clean
+\end{verbatim}
+
+Einfacher geht es mit dem Notebook \code{notebooks/Masterarbeit.ipynb}: Zelle~1 trainiert
+die Basismodelle (E0), Zelle~3 führt die Personalisierung (E1 bis E3) aus und
+erstellt alle Tabellen.

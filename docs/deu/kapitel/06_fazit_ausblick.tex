@@ -1,0 +1,76 @@
+% ==============================================================================
+% 06_fazit_ausblick.tex – Kapitel 6
+% ==============================================================================
+\chapter{Fazit und Ausblick}
+\label{ch:fazit}
+
+\section{Fazit}
+\label{sec:fazit}
+Diese Arbeit hat untersucht, wie gut man ein vortrainiertes
+Bildverarbeitungsmodell mit einer kurzen Webcam-Kalibrierung an eine Person
+anpassen kann. Ein auf ImageNet vortrainiertes ResNet-18 blieb eingefroren,
+und nur ein kleiner Regression Head wurde trainiert.
+
+Die wichtigsten Ergebnisse sind:
+\begin{itemize}
+  \item Ein allgemeines Modell, das auf GazeCapture trainiert wurde, ist nicht
+        besser als eine Schätzung, die immer die Bildschirmmitte ausgibt. Es
+        dient daher vor allem als Startpunkt für die Personalisierung.
+  \item Mit einem realistischen, zeitlichen Split senken wenige Minuten
+        persönlicher Daten den Fehler von \SI{31,8}{\percent} auf
+        \SI{27,9}{\percent} der Bildschirmdiagonale (etwa $-$\SI{12}{\percent},
+        18 Sitzungen). In guten Sitzungen bleibt der Gewinn groß (etwa
+        $-$\SI{46}{\percent}) und gilt auch für eine neue Aufnahme derselben
+        Person. Ein Lauf dauert etwa zwei Sekunden auf einer CPU.
+  \item Ein zufälliger Split ergibt \SI{19,8}{\percent} statt
+        \SI{30,3}{\percent} (etwa $-$\SI{35}{\percent}). Er überschätzt den
+        Nutzen aber, weil fast gleiche Nachbarbilder in Training und Test
+        liegen.
+  \item Ruhiger Hintergrund und gutes Licht sind wichtiger als die Gestaltung
+        der Kalibrierung. Eine gleichmäßige Bewegung des Ziels über den ganzen
+        Bildschirm war am besten.
+  \item Bilder direkt nach einem Sprung des Ziels haben falsche Labels. Sie zu
+        entfernen hilft wenig, kostet aber nichts.
+\end{itemize}
+Insgesamt zeigt die Arbeit: Dateneffiziente Personalisierung funktioniert mit
+einfachen Mitteln. Die Genauigkeit hängt aber stark von den
+Aufnahmebedingungen ab, und man muss sie mit einer realistischen Aufteilung der
+Daten bewerten. Alle Aufnahmen stammen von einer Person (dem Autor). Die
+Ergebnisse gelten daher zunächst nur für diese Person; ob sie sich auf andere
+Personen übertragen lassen, muss eine Studie mit mehreren Personen zeigen.
+
+\section{Ausblick}
+\label{sec:ausblick}
+Mehrere nächste Schritte liegen nahe:
+\begin{itemize}
+  \item \textbf{Augen- oder Gesichtsausschnitte als Eingabe.} Im ganzen
+        Kamerabild sind die Augen sehr klein. Ein Ausschnitt sollte dem Modell
+        viel mehr Blickinformation geben.
+  \item \textbf{Andere vortrainierte Modelle.} DINOv2, CLIP, MAE oder UniGaze
+        statt ResNet-18, jeweils mit eingefrorenem Backbone und kleinem Head.
+  \item \textbf{Sparsame Anpassung des Backbones.} Adapter oder LoRA als
+        Mittelweg zwischen reinem Head-Training und vollständigem Fine-Tuning.
+  \item \textbf{Mehr Personen und mehr Sitzungen,} mit Bedingungen, die sich
+        jeweils nur in einem Faktor ändern.
+  \item \textbf{Kopfbewegung berücksichtigen,} zum Beispiel mit der
+        Kopfposition als zusätzlichem Feature oder mit normalisierten
+        Gesichtsbildern.
+\end{itemize}
+
+\paragraph{Web-Demo.}
+Als praktischen Test habe ich eine Demo im Browser gebaut (Server mit FastAPI,
+geeignet für Hugging Face Spaces). Der Nutzer folgt 60 Sekunden lang einem
+Punkt. Danach wird ein Modell personalisiert, und der Blick wird live als
+Lichtfeld auf einem Raster von $3\times3$ Feldern angezeigt. Am Ende zeigt eine
+Auswertung, wann welches Feld angeschaut wurde. Die Demo nutzt bereits einige
+Ideen aus dem Ausblick: einen Augenausschnitt, räumliche Features des
+ResNet-18, eine Ridge Regression und die Kopfposition als Zusatz-Feature. Ein
+kurzer Test mit fünf Punkten (je \SI{3}{\second}) nach der Kalibrierung misst
+den Fehler auf neuen Bildern. In mehreren Einzeltests lag dieser Fehler
+zwischen etwa \SI{17,6}{\percent} und \SI{25,2}{\percent} (letzter Test:
+\SI{19,0}{\percent}); eine konstante Schätzung erreicht auf den
+Kalibrierdaten etwa \SI{23}{\percent}. In einem direkten Vergleich sank der
+Testfehler mit der Kopfposition von \SI{23,0}{\percent} auf
+\SI{17,6}{\percent}. Die Werte schwanken stark zwischen den Durchläufen und
+wurden nicht systematisch ausgewertet. Sie zeigen aber, dass Kopfbewegung und
+Licht im Live-Betrieb große Fehlerquellen sind.

@@ -1,0 +1,133 @@
+% ==============================================================================
+% 00_vorspann.tex – Titelseite, Kurzfassung, Abstract, Verzeichnisse
+% (Angaben zur Arbeit und das Aussehen der Titelseite stehen in preamble.tex)
+% ==============================================================================
+
+% --- Titelseite ----------------------------------------------------------------
+\BHTTitelseite
+
+% --- Vorspann: römische Seitenzahlen --------------------------------------------
+\pagenumbering{Roman}
+
+% --- Kurzfassung ---------------------------------------------------------------
+\chapter*{Kurzfassung}
+\addcontentsline{toc}{chapter}{Kurzfassung}
+Webcam-basiertes Eye-Tracking ist kostengünstig und auf fast jedem Laptop
+verfügbar. Mit allgemeinen Modellen ist es aber oft ungenau, weil sich Personen,
+Kameras und Umgebungen stark unterscheiden. Diese Arbeit untersucht, wie sich
+ein vortrainiertes Bildverarbeitungsmodell mit wenigen Kalibrierungsdaten an
+eine einzelne Person anpassen lässt.
+
+Als Feature Extractor dient ein auf ImageNet vortrainiertes ResNet-18, das
+eingefroren bleibt. Trainiert wird nur ein kleiner Regression Head: zuerst auf
+dem Datensatz GazeCapture (Basismodell) und danach mit eigenen
+Webcam-Aufnahmen aus 18 Sitzungen einer Person (Personalisierung). Als
+Fehlermaß dient der Diagonalfehler, also der Fehler in Prozent der
+Bildschirmdiagonale.
+
+Auf den eigenen Aufnahmen ist das Basismodell nicht besser als eine konstante
+Schätzung der Bildschirmmitte (30,6\,\% gegenüber 30,3\,\%); es dient daher
+vor allem als Startpunkt. Bei einer realistischen, zeitlichen Aufteilung der
+Daten (Training auf dem Anfang, Test auf dem Ende einer Aufnahme) senkt die
+Personalisierung den Fehler von 31,8\,\% auf 27,9\,\%, also um etwa 12\,\%.
+In Sitzungen mit guten Aufnahmebedingungen ist der Gewinn deutlich größer (46
+bis 47\,\%) und gilt auch für eine neue Aufnahme. Bei einer zufälligen
+Aufteilung der Bilder sinkt der Fehler auf 19,8\,\% (etwa ein Drittel). Dieser
+Wert ist aber zu optimistisch, weil fast gleiche Nachbarbilder in Training und
+Test liegen. Ein Trainingslauf dauert auf einer CPU nur wenige Sekunden. Hintergrund und Beleuchtung haben einen größeren Einfluss als
+die Gestaltung der Kalibrierung. Das Entfernen falsch gelabelter Bilder nach
+Zielsprüngen verbessert das Ergebnis nur wenig.
+
+Die Ergebnisse zeigen: Eine dateneffiziente Personalisierung ist mit einfachen
+Mitteln möglich. Ihr Nutzen muss aber mit einer realistischen Aufteilung der
+Daten bewertet werden. Alle Aufnahmen stammen von einer Person; die Ergebnisse
+gelten daher zunächst nur für diese Person.
+
+\Schlagwoerter{Schlagwörter}{Eye-Tracking, Blickschätzung, Webcam,
+Personalisierung, Transfer Learning, ResNet-18, GazeCapture}
+
+% --- Abstract (nur mit \ZweiteSprachetrue, siehe preamble.tex) -----------------
+\ifZweiteSprache
+\begin{otherlanguage}{english}
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+Webcam-based eye tracking is inexpensive and available on almost every laptop.
+With generic models, however, it is often inaccurate, because people, cameras
+and environments differ strongly. This thesis investigates how a pretrained
+vision model can be adapted to a single person with only a small amount of
+calibration data.
+
+A ResNet-18 pretrained on ImageNet serves as a frozen feature extractor. Only a
+small regression head is trained: first on the GazeCapture dataset (base model)
+and then on own webcam recordings from 18 sessions of one person
+(personalization). Accuracy is measured with the diagonal error, i.e.\ the
+error in percent of the screen diagonal.
+
+On the own recordings, the base model is not better than a constant prediction
+of the screen centre (30.6\,\% versus 30.3\,\%). Personalization reduces the
+error to 19.8\,\%, i.e.\ by about one third. One training run takes only a few
+seconds on a CPU. With a realistic, temporal split of the data the gain is
+smaller (about 12\,\% compared with the constant prediction). In sessions with
+good recording conditions, however, it remains clear and also transfers to a
+new recording. Background and lighting have a larger influence than the design
+of the calibration. Removing wrongly labelled frames after target jumps
+improves the result only slightly.
+
+The results show that data-efficient personalization is possible with simple
+means. Its benefit, however, must be assessed with a realistic data split.
+
+\Schlagwoerter{Keywords}{eye tracking, gaze estimation, webcam,
+personalization, transfer learning, ResNet-18, GazeCapture}
+\end{otherlanguage}
+\fi
+
+% --- Verzeichnisse -------------------------------------------------------------
+\tableofcontents
+\listoffigures
+\listoftables
+
+% --- Abkürzungen und Formelzeichen ---------------------------------------------
+\chapter*{Abkürzungsverzeichnis}
+\addcontentsline{toc}{chapter}{Abkürzungsverzeichnis}
+{\renewcommand{\arraystretch}{1.08}
+\begin{longtable}{@{}p{2.4cm}p{\dimexpr\textwidth-2.4cm-2\tabcolsep\relax}@{}}
+  \toprule
+  \textbf{Abkürzung} & \textbf{Bedeutung} \\
+  \midrule
+  \endhead
+  \bottomrule
+  \endfoot
+  AdamW   & Adam-Optimierer mit entkoppeltem Weight Decay \\
+  CLIP    & Contrastive Language-Image Pre-training \\
+  CNN     & Convolutional Neural Network (faltendes neuronales Netz) \\
+  CPU     & Central Processing Unit (Hauptprozessor) \\
+  CI      & Confidence Interval (Konfidenzintervall) \\
+  DA      & Domain Adaptation (Domänenadaption) \\
+  DG      & Domain Generalization (Domänengeneralisierung) \\
+  DINOv2  & Self-Distillation with No Labels, Version 2 \\
+  FC      & Fully Connected (vollständig verbundene Schicht) \\
+  fps     & Frames per Second (Bilder pro Sekunde) \\
+  L1      & Loss aus dem mittleren absoluten Fehler (L1-Verlust) \\
+  LoRA    & Low-Rank Adaptation \\
+  MAE     & Masked Autoencoder \\
+  MAML    & Model-Agnostic Meta-Learning \\
+  MLP     & Multi-Layer Perceptron (mehrschichtiges Perzeptron) \\
+  PEFT    & Parameter-Efficient Fine-Tuning (parametereffizientes Fine-Tuning) \\
+  PoR     & Point of Regard (Blickpunkt auf dem Bildschirm) \\
+  ReLU    & Rectified Linear Unit \\
+  RMSE    & Root Mean Squared Error (Wurzel des mittleren quadratischen Fehlers) \\
+  SD      & Standardabweichung \\
+  SVR     & Support-Vector-Regression \\
+  TTA     & Test-Time Adaptation (Anpassung zur Testzeit) \\
+  ViT     & Vision Transformer \\
+  \midrule
+  \multicolumn{2}{@{}l@{}}{\textbf{Formelzeichen}} \\[0.3ex]
+  $\Ediag$ & Diagonalfehler: euklidischer RMSE in Prozent der Bildschirmdiagonale \\
+\end{longtable}}
+
+% --- Verzeichnis der Fachbegriffe (eigene Datei, auch im Auszug) ---------------
+\input{kapitel/00b_fachbegriffe.tex}
+
+% --- Hauptteil: arabische Seitenzahlen ------------------------------------------
+\cleardoublepage
+\pagenumbering{arabic}

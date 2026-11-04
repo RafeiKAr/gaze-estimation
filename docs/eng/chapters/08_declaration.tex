@@ -1,0 +1,68 @@
+% ==============================================================================
+% 08_declaration.tex – Statutory declaration
+% English translation of the BHT wording (vorlage1/affidavit.tex). The German
+% text is usually the binding one; it is printed with \ZweiteSprachetrue
+% (preamble.tex). Please compare it with the current examination regulations.
+% ==============================================================================
+\chapter*{Statutory Declaration}
+\addcontentsline{toc}{chapter}{Statutory Declaration}
+
+I hereby declare that I have written this master's thesis independently and
+have used no sources or aids other than those stated, that all passages taken
+literally or in substance from other writings are marked as such, and that the
+thesis has not been part of any other course or examination in the same or a
+similar form.
+
+\ifZweiteSprache
+\begin{otherlanguage}{ngerman}
+\medskip
+\textbf{Eidesstattliche Erklärung.} Hiermit versichere ich, dass ich diese
+Masterarbeit selbstständig verfasst und keine anderen als die angegebenen
+Quellen und Hilfsmittel benutzt habe, alle Ausführungen, die anderen Schriften
+wörtlich oder sinngemäß entnommen wurden, kenntlich gemacht sind und die Arbeit
+in gleicher oder ähnlicher Fassung noch nicht Bestandteil einer Studien- oder
+Prüfungsleistung war.
+\end{otherlanguage}
+\fi
+
+\section*{Use of AI Tools}
+While preparing this thesis, I used the following AI tools as aids:
+
+\begin{center}
+\footnotesize
+\begin{tabularx}{\textwidth}{L{2.4cm} Y L{3.2cm}}
+  \toprule
+  \textbf{Tool} & \textbf{Purpose} & \textbf{Affected parts} \\
+  \midrule
+  ChatGPT (OpenAI) & Testing the implementation; improving the structure of
+                     the program code & Program code \\
+  \addlinespace
+  Claude (Anthropic) & \textbf{Code:} reviewing and evaluating the code,
+                     finding and correcting errors, scripts for recomputing
+                     the results (\code{auswertung.py}, notebook), improving
+                     the web demo
+                   & Program code, tables and figures in Chapter~4 \\
+  \addlinespace
+  Claude (Anthropic) & \textbf{Text:} translation between German and English,
+                     language editing and simplification, writing out text
+                     passages based on my drafts, results and notes,
+                     correcting errors
+                   & All chapters, abstract \\
+  \addlinespace
+  Claude (Anthropic) & \textbf{Layout:} LaTeX design (title page following
+                     the BHT template), labelling of figures
+                   & Layout, figures \\
+  \bottomrule
+\end{tabularx}
+\end{center}
+
+The topic, the research questions, the design of the experiments, the
+recording of the webcam data and the training runs are my own work. I checked
+all results of the AI tools critically and corrected them where necessary;
+the numbers in Chapter~4 were recomputed from the stored result files. The
+technical statements are based on the cited literature; AI tools are not used
+as sources. I take full responsibility for the entire content of this thesis.
+
+\vspace{1.2cm}
+\noindent\rule{6cm}{0.4pt}\hfill\rule{6cm}{0.4pt}\\
+Place, date \hfill \Autor
