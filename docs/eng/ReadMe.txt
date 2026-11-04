@@ -37,7 +37,6 @@ click "Install".
   F:\claude\@output\englisch\
   │
   ├── thesis.tex           main file: the WHOLE thesis
-  ├── Submission.tex       main file: only Chapters 2 and 4 (excerpt)
   ├── preamble.tex         settings, details (title, name, examiners, date)
   │                        and the BHT title page (\BHTTitelseite)
   ├── references.bib       all sources
@@ -59,7 +58,6 @@ click "Install".
   │
   │   --- these folders/files are created when you build: ---
   ├── thesis.pdf                 the whole thesis
-  ├── Submission\Submission.pdf  the excerpt (Chapters 2 and 4)
   └── single\                    single chapters as PDF
 
 Remember:
@@ -81,10 +79,6 @@ Step 2: run the right command
   Whole thesis
     python build_thesis.py thesis.tex
     -> thesis.pdf
-
-  Excerpt (Chapters 2 + 4)
-    python build_thesis.py Submission.tex --out Submission
-    -> Submission\Submission.pdf
 
   One chapter, e.g. Chapter 3
     python build_thesis.py --chapter 03
@@ -192,8 +186,8 @@ Numbers
 
   Done (first draft):   all Chapters 1 to 6, abstract, appendix
   Title page:           BHT sample (logo at top, rest black), details in preamble.tex
-  Still open (red):     camera and computer (Chapter 3), statement on AI
-                        tools (08_declaration.tex)
+  Still open (red):     camera and computer (Chapter 3)
+  AI statement:         in 08_declaration.tex (ChatGPT, Claude)
   Old version:          F:\claude\@output\_alt_2026-10-26
   No longer needed:     supervisor_meeting.tex, folder Supervisor_Meeting\
 

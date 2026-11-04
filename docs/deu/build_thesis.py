@@ -6,9 +6,6 @@ Aufruf (immer im Ordner dieser Datei, also deutsch\ oder englisch\):
   Ganze Arbeit:
     python build_thesis.py masterarbeit.tex          (englisch: thesis.tex)
 
-  Auszug zur Abgabe (nur Kapitel 2 und 4):
-    python build_thesis.py Abgabe.tex --out Abgabe
-    (englisch: python build_thesis.py Submission.tex --out Submission)
 
   Ein einzelnes Kapitel (Nummer = Anfang des Dateinamens in kapitel\ bzw. chapters\):
     python build_thesis.py --kapitel 02              -> einzeln\kapitel_02.pdf

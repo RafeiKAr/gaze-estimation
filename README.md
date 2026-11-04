@@ -131,19 +131,75 @@ Die Hyperparameter-Studie (`exp.py`) hat keine festen Seeds; beim Neurechnen
 
 ---
 
-## 6. Aufräumen
 
-```powershell
-cd notebooks
-python archivieren.py               # zeigt nur an, was verschoben würde
-python archivieren.py --ausfuehren  # verschiebt alte Dateien nach archiv/
-```
-
-Es wird nichts gelöscht. Die Liste steht in `archiv/INHALT.txt`.
-
----
-
-## 7. Datensatz
+## 6. Datensatz
 
 GazeCapture – Krafka et al., *Eye Tracking for Everyone*, CVPR 2016,
 <https://gazecapture.csail.mit.edu/>. Der Datensatz ist **nicht** Teil dieses Projekts.
+
+Verwendet wurde eine Teilmenge von Kaggle
+(<https://www.kaggle.com/datasets/dhruv413/gaze-capture-20gb-zip>), die `main.py`
+herunterlädt. Wer die Experimente wiederholen möchte, muss die Daten selbst besorgen
+und die Nutzungsbedingungen von GazeCapture akzeptieren (siehe Abschnitt 7).
+
+---
+
+## 7. Lizenzen und Nutzungsbedingungen
+
+### 7.1 Eigener Code
+
+Der Code in diesem Repository steht unter der **MIT-Lizenz** (siehe Datei `LICENSE`).
+Das gilt nur für den eigenen Code, **nicht** für Daten oder Modelle Dritter.
+
+### 7.2 GazeCapture (Daten)
+
+- Die Daten, Modelle und der Code von GazeCapture dürfen laut den Autoren **nur für
+  Forschungszwecke** verwendet werden (Lizenz: `LICENSE.md` im Repository
+  <https://github.com/CSAILVision/GazeCapture>).
+- Dieses Repository enthält **keine** GazeCapture-Daten: keine Bilder, keine
+  `labels.csv`, keine Split-Dateien und keinen Merkmals-Cache (siehe `.gitignore`).
+- Bei Nutzung bitte zitieren: K. Krafka et al., *Eye Tracking for Everyone*, CVPR 2016.
+
+### 7.3 Trainierte Modelle
+
+- In diesem Repository liegen **keine** trainierten Modelle (`*.pt` stehen in `.gitignore`).
+- Das Basismodell (`base_norm_subject.pt`) wurde auf GazeCapture trainiert. Es gelten
+  daher ebenfalls die Bedingungen von GazeCapture: **nur Forschung, nicht kommerziell**.
+- Der Backbone nutzt die ImageNet-Gewichte von torchvision
+  (`ResNet18_Weights.DEFAULT`). torchvision selbst steht unter der BSD-3-Clause-Lizenz;
+  für die vortrainierten Gewichte können eigene Bedingungen gelten (ImageNet:
+  nur nicht kommerzielle Forschung).
+
+### 7.4 Eigene Aufnahmen (Personalisierungsdaten)
+
+- Die Webcam-Bilder und Videos der eigenen Sitzungen zeigen das Gesicht des Autors
+  und sind personenbezogene Daten. Sie sind **nicht** in diesem Repository
+  (`personalization/*/images/` und Videos stehen in `.gitignore`).
+- Sie liegen in einem **privaten** Hugging-Face-Dataset und werden nicht öffentlich
+  weitergegeben. Alle Rechte liegen beim Autor.
+
+### 7.5 Web-Demo (Hugging Face Space)
+
+- Der Code der Demo (`demo/`) steht unter der MIT-Lizenz.
+- Die Demo verarbeitet Kamerabilder nur im Arbeitsspeicher und speichert sie nicht.
+- Das Gesichtsmodell (`haarcascade_frontalface_default.xml`) stammt aus OpenCV und wird
+  mit dem Paket `opencv-python-headless` installiert (Lizenz siehe OpenCV).
+
+### 7.6 Verwendete Bibliotheken
+
+Die Pakete werden nicht mitgeliefert, sondern mit `pip` installiert. Es gelten ihre
+eigenen Lizenzen:
+
+| Paket | Lizenz |
+|---|---|
+| PyTorch, torchvision | BSD-3-Clause |
+| NumPy, pandas, SciPy, scikit-learn | BSD-3-Clause |
+| OpenCV (`opencv-python`) | Apache 2.0 |
+| Pillow | MIT-CMU (HPND) |
+| matplotlib | Matplotlib License (PSF-basiert) |
+| TensorBoard, kaggle | Apache 2.0 |
+| tqdm | MIT / MPL-2.0 |
+| pygame | LGPL 2.1 |
+| FastAPI | MIT |
+| uvicorn | BSD-3-Clause |
+| JupyterLab, ipykernel | BSD-3-Clause |

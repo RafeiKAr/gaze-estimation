@@ -1,0 +1,34 @@
+% ==============================================================================
+% Submission.tex – excerpt of the thesis for submission (English)
+% Contains only Chapters 2 and 4 of the thesis (same chapter numbers).
+%
+% Build:  python build_thesis.py Submission.tex --out Submission
+%         -> Submission\Submission.pdf
+% ==============================================================================
+\documentclass[
+  11pt, a4paper, oneside, DIV=12, BCOR=8mm, parskip=half,
+  headings=normal, bibliography=totoc
+]{scrreprt}
+
+\input{preamble.tex}
+
+\begin{document}
+
+\BHTTitelseite[\textbf{Excerpt:} Chapter~2 (State of the Art) and\\
+  Chapter~4 (Experiments and Results)]
+
+\pagenumbering{Roman}
+\tableofcontents
+\cleardoublepage
+\pagenumbering{arabic}
+
+\setcounter{chapter}{1}                    % -> Chapter 2
+\input{chapters/02_state_of_the_art.tex}
+\setcounter{chapter}{3}                    % -> Chapter 4
+\input{chapters/04_experiments_results.tex}
+
+\renewcommand{\bibname}{References}
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}

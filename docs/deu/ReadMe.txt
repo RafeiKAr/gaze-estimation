@@ -37,15 +37,16 @@ mit "Install" bestätigen.
   F:\claude\@output\deutsch\
   │
   ├── masterarbeit.tex     Hauptdatei: die GANZE Arbeit
-  ├── Abgabe.tex           Hauptdatei: nur Kapitel 2 und 4 (Auszug)
   ├── preamble.tex         Einstellungen, Angaben (Titel, Name, Prüfer, Datum)
   │                        und die BHT-Titelseite (\BHTTitelseite)
   ├── references.bib       alle Quellen
+  ├── unsrtnat_de.bst      deutscher Literaturstil (und, S., Hrsg.)
   ├── build_thesis.py      Skript, das die PDF-Dateien erstellt
   ├── ReadMe.txt           diese Datei
   │
   ├── kapitel\             der Text – ein Kapitel = eine Datei
   │     00_vorspann.tex                Titelblatt, Kurzfassung, Verzeichnisse
+  │     00b_fachbegriffe.tex           Glossar der Fachbegriffe (Englisch/Deutsch)
   │     01_einleitung.tex              Kapitel 1
   │     02_stand_der_technik.tex       Kapitel 2
   │     03_methodik.tex                Kapitel 3
@@ -59,7 +60,6 @@ mit "Install" bestätigen.
   │
   │   --- diese Ordner/Dateien entstehen beim Bauen: ---
   ├── masterarbeit.pdf     die ganze Arbeit
-  ├── Abgabe\Abgabe.pdf    der Auszug (Kapitel 2 und 4)
   └── einzeln\             einzelne Kapitel als PDF
 
 Merke:
@@ -81,10 +81,6 @@ Schritt 2: den passenden Befehl ausführen
   Ganze Arbeit
     python build_thesis.py masterarbeit.tex
     -> masterarbeit.pdf
-
-  Auszug (Kapitel 2 + 4)
-    python build_thesis.py Abgabe.tex --out Abgabe
-    -> Abgabe\Abgabe.pdf
 
   Ein Kapitel, z.B. Kapitel 3
     python build_thesis.py --kapitel 03
@@ -194,8 +190,8 @@ Zahlen
   Fertig (erste Fassung):  alle Kapitel 1 bis 6, Kurzfassung, Abstract, Anhang
   Titelseite:              nach dem BHT-Muster (Logo oben, sonst schwarz), Angaben in
                            preamble.tex
-  Noch offen (rot):        Kamera und Rechner (Kapitel 3), Angabe zu
-                           KI-Werkzeugen (08_erklaerung.tex)
+  Noch offen (rot):        Kamera und Rechner (Kapitel 3)
+  KI-Angabe:               in 08_erklaerung.tex (ChatGPT, Claude)
   Alte Fassung:            F:\claude\@output\_alt_2026-10-26
   Nicht mehr gebraucht:    betreuer_termin.tex, Ordner Betreuer_Termin\,
                            experiments_results.*, state_of_the_art.*,
