@@ -30,6 +30,7 @@ Results are written to results/moving_average/ (new files only):
   ma_runs.csv     one row per run, filter and window
   ma_summary.csv  mean over the 18 sequential sessions + Wilcoxon tests
                   (each window vs. k = 1, Holm correction per metric)
+  ma_other.csv    runs with other sessions (e.g. person B), not in the summary
   ma_demo.csv     demo test points (if the log file exists); the first 0.8 s
                   of each point are already removed by the demo
 
@@ -51,6 +52,11 @@ RUNS_FILE = ROOT / "results" / "personal" / "personal_runs.jsonl"
 DEMO_LOG = ROOT / "demo" / "debug_frames" / "tracking_log.json"
 OUT_DIR = ROOT / "results" / "moving_average"
 
+# The 18 sessions of person A evaluated in the thesis. Only these go into the
+# summary and the tests; other sessions (e.g. person B: 28, 29) are reported
+# separately in ma_other.csv.
+SESSIONS_A = ("01", "02", "03", "04", "05", "06", "07", "08", "09",
+              "19", "20", "21", "22", "23", "24", "25", "26", "27")
 LABELS_PER_SEC = 6
 WINDOWS = (1, 3, 5, 9, 15)
 NAME = re.compile(r"pred_(\d+)-(\d+)_norm_subject_original_(sequential|two_videos)_standard_s(\d+)\.csv")
@@ -130,7 +136,7 @@ def holm(pvals):
 
 
 def summarize(runs, good):
-    seq = runs[(runs.split == "sequential") & (runs.seed == 42)]
+    seq = runs[(runs.split == "sequential") & (runs.seed == 42) & runs.test.isin(SESSIONS_A)]
     out = []
     for group, sel in (("all", seq), ("adapted", seq[seq.test.isin(good)])):
         base = sel[(sel["filter"] == "causal") & (sel.k == 1)].set_index("test")
@@ -182,6 +188,9 @@ def main():
     runs.to_csv(OUT_DIR / "ma_runs.csv", index=False)
     summary = summarize(runs, good)
     summary.to_csv(OUT_DIR / "ma_summary.csv", index=False)
+    other = runs[~runs.test.isin(SESSIONS_A) | ~runs.train.isin(SESSIONS_A)]
+    if len(other):
+        other.to_csv(OUT_DIR / "ma_other.csv", index=False)
     demo = run_demo()
     if demo is not None:
         demo.to_csv(OUT_DIR / "ma_demo.csv", index=False)
@@ -194,6 +203,9 @@ def main():
     print("\nTwo videos (21->22, 22->21, seeds 42-44), mean:\n", tv.round(2))
     if demo is not None:
         print("\nDemo test points (causal):\n", demo.round(2).to_string(index=False))
+    if len(other):
+        print("\nOther sessions (not in the summary), mean per split / filter / k:\n",
+              other.groupby(["train", "test", "split", "filter", "k"])[["error", "s2s"]].mean().round(2))
 
 
 if __name__ == "__main__":
