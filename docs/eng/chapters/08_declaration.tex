@@ -34,20 +34,27 @@ While preparing this thesis, I used the following AI tools as aids:
   \toprule
   \textbf{Tool} & \textbf{Purpose} & \textbf{Affected parts} \\
   \midrule
-  ChatGPT (OpenAI) & Testing the implementation; improving the structure of
-                     the program code & Program code \\
+  ChatGPT (OpenAI) & Turning my own program structure into first code drafts
+                     (data loading, training), testing the implementation,
+                     improving the structure of the program code
+                   & Program code \\
   \addlinespace
   Claude (Anthropic) & \textbf{Code:} reviewing and evaluating the code,
                      finding and correcting errors, scripts for recomputing
-                     the results (\code{auswertung.py}, notebook), improving
-                     the web demo
-                   & Program code, tables and figures in Chapter~4 \\
+                     the results (\code{auswertung.py}, notebook), design and
+                     implementation of the temporal smoothing evaluation
+                     (\code{moving\_average.py}), preparation of the sessions
+                     of the second person (\code{prepare\_session.py}),
+                     figures (\code{plot\_targets.py}), changes to the web
+                     demo (calibration movement, moving average, model
+                     download)
+                   & Program code, tables and figures in Chapter~4, web demo \\
   \addlinespace
   Claude (Anthropic) & \textbf{Text:} translation between German and English,
                      language editing and simplification, writing out text
                      passages based on my drafts, results and notes,
                      correcting errors
-                   & All chapters, abstract \\
+                   & All chapters, abstract, accompanying documentation \\
   \addlinespace
   Claude (Anthropic) & \textbf{Layout:} LaTeX design (title page following
                      the BHT template), labelling of figures
@@ -56,8 +63,17 @@ While preparing this thesis, I used the following AI tools as aids:
 \end{tabularx}
 \end{center}
 
-The topic, the research questions, the design of the experiments, the
-recording of the webcam data and the training runs are my own work. I checked
+\textit{How the code was created:} At the start, I planned the structure of the
+pipeline myself: loading and normalizing the data, splits, frozen backbone with
+regression head, training and evaluation. In the first days, ChatGPT helped me
+to turn this structure into Python code. I ran, tested and adapted the code
+myself. The technical decisions, i.e.\ model, splits, error measure and
+experiments, were mine.
+
+The topic, the research questions, the design of experiments E0 to E3, the
+recording of the webcam data and all training runs and demo tests are my own
+work. The additional evaluations E4 (smoothing, suggested by my supervisor) and
+E5 (second person) were designed together with Claude and run by me. I checked
 all results of the AI tools critically and corrected them where necessary;
 the numbers in Chapter~4 were recomputed from the stored result files. The
 technical statements are based on the cited literature; AI tools are not used

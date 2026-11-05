@@ -9,55 +9,82 @@
 
 \paragraph{RQ1: How much does a short personalization help?}
 The generic base model is not better than the constant baseline on the own
-sessions (\SI{30.57}{\percent} compared with \SI{30.32}{\percent}). With a
-temporal split, which matches real use, personalization lowers the error from
-\SI{31.84}{\percent} to \SI{27.93}{\percent}, that is, by about
-\SI{12}{\percent} (Wilcoxon $p=0.002$). In 8 of 18 sessions there is no
-improvement (\cref{sec:design_performance}). In the good sessions 21 and 22,
-however, the gain stays large (\SI{46}{\percent}) and even holds for a second
-recording (\SI{47}{\percent} reduction, \cref{sec:loading}). With a random
-split, the error drops to \SI{19.79}{\percent}, that is, by about one third,
-and the best session reaches \SI{10.5}{\percent} (\cref{sec:sessions_results}).
-This split, however, is too optimistic. For person~B, personalization with the
-whole camera image brought no gain in either session, not even with a random
-split. With the eye crop of the web demo, however, her error fell from
-\SI{26.9}{\percent} to \SI{9.7}{\percent} (\cref{sec:person_b}).
-\emph{Answer:} a short personalization can help clearly, but only under good
-recording conditions and with an input that captures the eyes well. The random
-split overestimates the benefit.
+recordings (\SI{30.57}{\percent} versus \SI{30.32}{\percent}). With a temporal
+split, which matches real use, personalization improves the result. The error
+falls from \SI{31.84}{\percent} to \SI{27.93}{\percent}. This is an improvement
+of about \SI{12}{\percent} (Wilcoxon $p=0.002$). In 8 of 18 sessions, however,
+there is no improvement (\cref{sec:design_performance}). In the good sessions 21
+and 22, the improvement of \SI{46}{\percent} is still clear. For a second
+recording, too, the gain stays almost the same at \SI{47}{\percent}
+(\cref{sec:loading}).
+
+With a random split, the results are even better. The error falls to
+\SI{19.79}{\percent}, i.e.\ by about one third. The best session even reaches an
+error of only \SI{10.5}{\percent} (\cref{sec:sessions_results}). This split,
+however, shows a result that is too positive and does not match real use.
+
+For person~B, personalization with the whole camera image brought no
+improvement in either session. This also holds for the random split. With the
+eye crop of the web demo, in contrast, the error fell from \SI{26.9}{\percent}
+to \SI{9.7}{\percent} (\cref{sec:person_b}).
+
+\emph{Answer:} a short personalization can reduce the error clearly. It does
+not, however, work equally well for every recording. Good recording conditions
+and a suitable image crop of the eyes are important for it. A random split also
+shows better results than one can expect in real use.
 
 \paragraph{RQ2: Which training setting is suitable?}
-On GazeCapture, most settings do not differ significantly, because all models
-stay close to the constant baseline (\cref{sec:training}). It is clear that
-sigmoid is the best activation and that L1 is better than the loss weighted by
-position. Training only the head (\enquote{FC only}) is as good as more layers,
-but more stable and much faster. \emph{Answer:} frozen backbone, regression head with
-sigmoid, L1 loss, learning rate $10^{-4}$ and batch size 32. The choice is based
-mainly on stability and effort; for the learning rate also on the lowest error
-in the first test.
+On GazeCapture, most training settings show no clear difference. The results of
+all models are close to the constant baseline (\cref{sec:training}). The tests
+show, however, that sigmoid as the activation gives the best results. In
+addition, the L1 loss is better than the loss with position weighting. It is
+enough to train only the regression head. This gives similar results to
+training further layers, but is more stable and much faster.
+
+\emph{Answer:} the following setting is suitable for training:
+\begin{itemize}[nosep]
+  \item frozen backbone (not trained),
+  \item regression head with sigmoid,
+  \item L1 loss,
+  \item learning rate $10^{-4}$,
+  \item batch size 32.
+\end{itemize}
+This setting was chosen mainly because of its stability and the low training
+effort. The learning rate $10^{-4}$ was also chosen because it reached the
+lowest error in the first test.
 
 \paragraph{RQ3: What is the role of data split, calibration and smoothing?}
-The split is very important. The random split is too optimistic, because almost
-identical neighbouring frames end up in training and test. The smooth movement of
-the target (Gen~1) covers the screen best and had the lowest error. Jumps create
-frames with wrong labels. Removing these WAIT frames improves the result
-slightly (\num{0.84} percentage points, not significant). More labels in the
-corners do not lower the corner error. A moving average over the predictions
-makes them much calmer (RMS-S2S $-$\SI{40}{\percent} at $k=3$), but does not
-improve the accuracy; longer windows make it worse because of the lag
-(\cref{sec:smoothing}). \emph{Answer:} a short, smooth movement
-across the whole screen is best. Jumps should be logged so that transition frames
-can be removed. Evaluation should always use a temporal split. A short moving average (about
-\SI{0.5}{\second}) is suitable for a calm display, but does not replace a
-better calibration.
+The data split has a large influence on the results. A random split gives
+results that are too good, because almost identical frames of one recording
+appear both in training and in test. The smooth movement of the target over
+the screen (Gen~1) covers the screen best and reaches the lowest error; the
+difference, however, is not significant (\cref{sec:design_performance}). Fast
+jumps produce frames with wrong labels. Removing these WAIT frames improves the
+result slightly, by \num{0.84} percentage points. This improvement, however, is
+not significant. More data in the corners does not improve the results in these
+areas. A moving average over the predictions makes the display much calmer.
+With a window of $k=3$, the RMS-S2S falls by \SI{40}{\percent}. The accuracy,
+however, does not improve. With longer windows, the result even gets worse,
+because the prediction is delayed more (\cref{sec:smoothing}).
+
+\emph{Answer:} for calibration, a short and smooth movement over the whole
+screen is best. Fast jumps should be detected and logged, so that the frames
+during these movements can be removed later. For evaluation, a temporal split
+should always be used, because it matches real use better. A short moving
+average (about \SI{0.5}{\second}) can make the display calmer. It does not,
+however, improve the accuracy and does not replace a better calibration.
 
 \paragraph{RQ4: What is the influence of the recording conditions?}
-The strongest factor is the background: a busy background raises the error by 6
-to 15 percentage points. Glasses usually raise it, and in dark rooms
-personalization hardly helps. Length and device (webcam) show no clear effect
-(\cref{sec:conditions}). \emph{Answer:} a calm background and good light are more
-important than the design of the calibration. These statements, however, are
-based on single sessions.
+The largest influence comes from the background. A busy background raises the
+error by 6 to 15 percentage points. Glasses also lead to a higher error in most
+cases. In dark rooms, personalization helps only a little. The length of the
+recording and the device used (webcam), in contrast, show no clear influence
+(\cref{sec:conditions}).
+
+\emph{Answer:} a calm background and good lighting are particularly important
+for good results. They have a larger influence than the type of calibration.
+These results, however, are based only on single sessions and must therefore be
+read with care.
 
 \section{Relation to the State of the Art}
 \label{sec:einordnung}

@@ -150,25 +150,26 @@ normalization, all targets lie in the unit square $[0,1]^2$
 defined in the same way for all devices. All further experiments use normalized
 targets.
 
-\begin{figure}[htbp]
+\begin{figure}[tbp]
   \centering
-  \begin{subfigure}[t]{0.47\textwidth}
+  \begin{subfigure}[t]{0.49\textwidth}
     \centering
     \includegraphics[width=\textwidth]{raw_targets.png}
-    \caption[Raw targets in screen points]{Raw targets in screen points (density of all frames,
-             logarithmic colour scale); dashed: outlines of the screen formats.}
+    \caption{Raw targets in screen points}
     \label{fig:raw_targets}
   \end{subfigure}
   \hfill
-  \begin{subfigure}[t]{0.47\textwidth}
+  \begin{subfigure}[t]{0.49\textwidth}
     \centering
-    \includegraphics[width=0.88\textwidth]{normalized_targets.png}
-    \caption[Normalized targets]{Normalized targets (same display; dashed: unit
-             square). The bright cells are calibration points that are shown at
-             the same relative places on all devices.}
+    \includegraphics[width=\textwidth]{normalized_targets.png}
+    \caption{Normalized targets in the unit square}
     \label{fig:normalized_targets}
   \end{subfigure}
-  \caption{Distribution of the GazeCapture gaze targets before and after normalization.}
+  \caption[GazeCapture gaze targets before and after normalization]{Distribution of the GazeCapture gaze targets before and after
+           normalization (density of all frames, logarithmic colour scale).
+           Left: dashed, the outlines of the screen formats. Right: dashed, the
+           unit square; the bright cells are calibration points that are shown
+           at the same relative places on all devices.}
   \label{fig:normalization}
 \end{figure}
 

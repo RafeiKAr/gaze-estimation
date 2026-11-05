@@ -8,60 +8,90 @@
 \label{sec:antworten}
 
 \paragraph{FF1: Wie stark hilft eine kurze Personalisierung?}
-Das allgemeine Basismodell ist auf den eigenen Sitzungen nicht besser als die
-Konstant-Baseline (\SI{30,57}{\percent} gegenüber \SI{30,32}{\percent}). Mit
-einem zeitlichen Split, der der echten Nutzung entspricht, senkt die
-Personalisierung den Fehler von \SI{31,84}{\percent} auf \SI{27,93}{\percent},
-also um etwa \SI{12}{\percent} (Wilcoxon $p=0,002$). In 8 von 18 Sitzungen
-gibt es dabei keine Verbesserung (\cref{sec:design_performance}). In den guten
-Sitzungen 21 und 22 bleibt der Gewinn aber groß (\SI{46}{\percent}) und gilt
-sogar für eine zweite Aufnahme (\SI{47}{\percent} Verringerung,
-\cref{sec:loading}). Mit zufälligem Split sinkt der Fehler auf
-\SI{19,79}{\percent}, also um etwa ein Drittel, und die beste Sitzung erreicht
-\SI{10,5}{\percent} (\cref{sec:sessions_results}). Dieser Split ist aber zu
-optimistisch.
-Bei Person~B brachte die Personalisierung mit dem ganzen Kamerabild dagegen in
-beiden Sitzungen keinen Gewinn, selbst mit zufälligem Split. Mit dem
-Augenausschnitt der Web-Demo sank ihr Fehler aber von \SI{26,9}{\percent} auf
-\SI{9,7}{\percent} (\cref{sec:person_b}).
-\emph{Antwort:} Eine kurze Personalisierung kann deutlich helfen, aber nur
-unter guten Aufnahmebedingungen und mit einer Eingabe, die die Augen gut
-erfasst. Der zufällige Split überschätzt den Nutzen.
+Das allgemeine Basismodell ist auf den eigenen Aufnahmen nicht besser als die
+Konstant-Baseline (\SI{30,57}{\percent} gegenüber \SI{30,32}{\percent}). Bei
+einem zeitlichen Split, der der echten Nutzung entspricht, verbessert die
+Personalisierung das Ergebnis. Der Fehler sinkt von \SI{31,84}{\percent} auf
+\SI{27,93}{\percent}. Das ist eine Verbesserung von etwa \SI{12}{\percent}
+(Wilcoxon $p=0,002$). In 8 von 18 Sitzungen gibt es jedoch keine Verbesserung
+(\cref{sec:design_performance}). Bei den guten Sitzungen 21 und 22 ist die
+Verbesserung mit \SI{46}{\percent} weiterhin deutlich. Auch bei einer zweiten
+Aufnahme bleibt der Gewinn mit \SI{47}{\percent} fast gleich
+(\cref{sec:loading}).
+
+Bei einem zufälligen Split sind die Ergebnisse noch besser. Der Fehler sinkt auf
+\SI{19,79}{\percent}, also um etwa ein Drittel. Die beste Sitzung erreicht sogar
+einen Fehler von nur \SI{10,5}{\percent} (\cref{sec:sessions_results}). Dieser
+Split zeigt aber ein zu positives Ergebnis und entspricht nicht der echten
+Nutzung.
+
+Bei Person~B brachte die Personalisierung mit dem vollständigen Kamerabild in
+beiden Sitzungen keine Verbesserung. Das gilt auch beim zufälligen Split. Mit
+dem Augenausschnitt aus der Web-Demo sank der Fehler dagegen von
+\SI{26,9}{\percent} auf \SI{9,7}{\percent} (\cref{sec:person_b}).
+
+\emph{Antwort:} Eine kurze Personalisierung kann den Fehler deutlich
+reduzieren. Das funktioniert aber nicht bei jeder Aufnahme gleich gut. Gute
+Aufnahmebedingungen und ein passender Bildausschnitt der Augen sind dafür
+wichtig. Ein zufälliger Split zeigt außerdem bessere Ergebnisse, als man bei der
+echten Nutzung erwarten kann.
 
 \paragraph{FF2: Welche Trainingseinstellung eignet sich?}
-Auf GazeCapture unterscheiden sich die meisten Einstellungen nicht
-signifikant, weil alle Modelle nahe der Konstant-Baseline bleiben
-(\cref{sec:training}). Klar ist: Sigmoid ist die beste Activation, und L1 ist
-besser als der nach Position gewichtete Loss. Nur den Head zu trainieren
-(\enquote{nur FC}) ist genauso gut wie mehr Schichten, aber stabiler und viel
-schneller. \emph{Antwort:} Eingefrorener Backbone, Regression Head mit Sigmoid,
-L1-Loss, Learning Rate $10^{-4}$ und Batch Size 32. Die Wahl beruht vor allem auf
-Stabilität und Aufwand; bei der Learning Rate auch auf dem kleinsten Fehler
-im ersten Test.
+Auf GazeCapture zeigen die meisten Trainingseinstellungen keinen deutlichen
+Unterschied. Die Ergebnisse aller Modelle liegen nahe an der Konstant-Baseline
+(\cref{sec:training}). Die Tests zeigen aber, dass Sigmoid als Activation die
+besten Ergebnisse liefert. Außerdem ist L1-Loss besser als der Loss mit
+Positionsgewichtung. Es reicht aus, nur den Regression Head zu trainieren. Das
+liefert ähnliche Ergebnisse wie das Training weiterer Schichten, ist aber
+stabiler und deutlich schneller.
+
+\emph{Antwort:} Für das Training eignet sich folgende Einstellung:
+\begin{itemize}[nosep]
+  \item eingefrorener Backbone (wird nicht trainiert),
+  \item Regression Head mit Sigmoid,
+  \item L1-Loss,
+  \item Learning Rate $10^{-4}$,
+  \item Batch Size 32.
+\end{itemize}
+Diese Einstellung wurde vor allem wegen ihrer Stabilität und des geringen
+Trainingsaufwands ausgewählt. Die Learning Rate $10^{-4}$ wurde zusätzlich
+gewählt, weil sie im ersten Test den kleinsten Fehler erreicht hat.
 
 \paragraph{FF3: Welche Rolle spielen Datenaufteilung, Kalibrierung und Glättung?}
-Die Aufteilung ist sehr wichtig. Der zufällige Split ist zu optimistisch, weil
-fast gleiche Nachbarbilder in Training und Test landen. Die gleichmäßige
-Bewegung des Ziels (Gen~1) deckt den Bildschirm am besten ab und hatte den
-kleinsten Fehler. Sprünge erzeugen Bilder mit falschen Labels. Diese
-WAIT-Bilder zu entfernen, verbessert das Ergebnis leicht (\num{0,84}
-Prozentpunkte, nicht signifikant). Mehr Labels in den Ecken senken den
-Eckfehler nicht. Ein Moving Average über die Vorhersagen macht sie deutlich
-ruhiger (RMS-S2S $-$\SI{40}{\percent} bei $k=3$), verbessert die Genauigkeit
-aber nicht; längere Fenster verschlechtern sie wegen der Verzögerung
-(\cref{sec:smoothing}). \emph{Antwort:} Eine kurze, gleichmäßige Bewegung über den
-ganzen Bildschirm ist am besten. Sprünge sollte man protokollieren, damit man
-Transition Frames entfernen kann. Bewerten sollte man immer mit einem zeitlichen
-Split. Ein kurzer Moving Average (etwa \SI{0,5}{\second}) eignet sich für eine
-ruhige Anzeige, ersetzt aber keine bessere Kalibrierung.
+Die Aufteilung der Daten hat einen großen Einfluss auf die Ergebnisse. Ein
+zufälliger Split liefert zu gute Ergebnisse, weil fast gleiche Bilder aus einer
+Aufnahme sowohl im Training als auch im Test vorkommen. Die gleichmäßige
+Bewegung des Ziels über den Bildschirm (Gen~1) deckt den Bildschirm am besten
+ab und erreicht den kleinsten Fehler; der Unterschied ist allerdings nicht
+signifikant (\cref{sec:design_performance}). Bei schnellen Sprüngen entstehen
+Bilder mit falschen Labels. Wenn diese WAIT-Bilder entfernt werden, verbessert
+sich das Ergebnis leicht um \num{0,84} Prozentpunkte. Diese Verbesserung ist
+jedoch nicht signifikant. Mehr Daten in den Ecken verbessern die Ergebnisse in
+diesen Bereichen nicht. Ein Moving Average über die Vorhersagen macht die
+Anzeige deutlich ruhiger. Bei einem Fenster von $k=3$ sinkt die RMS-S2S um
+\SI{40}{\percent}. Die Genauigkeit wird dadurch aber nicht besser. Bei längeren
+Fenstern wird das Ergebnis sogar schlechter, weil die Vorhersage stärker
+verzögert wird (\cref{sec:smoothing}).
+
+\emph{Antwort:} Für die Kalibrierung ist eine kurze und gleichmäßige Bewegung
+über den gesamten Bildschirm am besten. Schnelle Sprünge sollten erkannt und
+protokolliert werden, damit die Bilder während dieser Bewegungen später
+entfernt werden können. Für die Bewertung sollte immer ein zeitlicher Split
+verwendet werden, da dieser der echten Nutzung besser entspricht. Ein kurzer
+Moving Average (etwa \SI{0,5}{\second}) kann die Anzeige ruhiger machen. Er
+verbessert aber nicht die Genauigkeit und ersetzt keine bessere Kalibrierung.
 
 \paragraph{FF4: Welchen Einfluss haben die Aufnahmebedingungen?}
-Der stärkste Faktor ist der Hintergrund: Ein unruhiger Hintergrund erhöht den
-Fehler um 6 bis 15 Prozentpunkte. Eine Brille erhöht ihn meistens, und in
-dunklen Räumen hilft die Personalisierung kaum. Dauer und Gerät (Webcam) zeigen
-keinen klaren Effekt (\cref{sec:conditions}). \emph{Antwort:} Ruhiger
-Hintergrund und gutes Licht sind wichtiger als die Gestaltung der
-Kalibrierung. Diese Aussagen beruhen aber auf einzelnen Sitzungen.
+Der größte Einfluss kommt vom Hintergrund. Ein unruhiger Hintergrund erhöht den
+Fehler um 6 bis 15 Prozentpunkte. Auch eine Brille führt meistens zu einem
+höheren Fehler. In dunklen Räumen hilft die Personalisierung nur wenig. Die
+Dauer der Aufnahme und das verwendete Gerät (Webcam) zeigen dagegen keinen
+klaren Einfluss (\cref{sec:conditions}).
+
+\emph{Antwort:} Ein ruhiger Hintergrund und gute Lichtverhältnisse sind für gute
+Ergebnisse besonders wichtig. Sie haben einen größeren Einfluss als die Art der
+Kalibrierung. Diese Ergebnisse basieren jedoch nur auf einzelnen Sitzungen und
+müssen deshalb vorsichtig betrachtet werden.
 
 \section{Einordnung in den Stand der Technik}
 \label{sec:einordnung}

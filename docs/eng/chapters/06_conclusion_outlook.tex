@@ -6,47 +6,82 @@
 
 \section{Conclusion}
 \label{sec:fazit}
-This thesis studied how well a pretrained vision model can be adapted to one
-person with a short webcam calibration. A ResNet-18 pretrained on ImageNet stayed
-frozen, and only a small regression head was trained.
+This thesis examined whether a pretrained vision model can be adapted to a
+specific person with a short webcam calibration. For this, a ResNet-18 already
+trained on ImageNet was used. The weights of this model stayed unchanged during
+training. Only a small additional part for computing the gaze position (the
+regression head) was trained.
 
-The most important results are:
+The most important results of this thesis can be summarized as follows:
 \begin{itemize}
-  \item A generic model trained on GazeCapture is not better than an estimate
-        that always gives the screen centre. It therefore mainly serves as a
-        starting point for personalization.
-  \item With a realistic, temporal split, a few minutes of personal data lower
-        the error from \SI{31.8}{\percent} to \SI{27.9}{\percent} of the
-        screen diagonal (about $-$\SI{12}{\percent}, 18 sessions). In good
-        sessions the gain stays large (about $-$\SI{46}{\percent}) and also
-        holds for a new recording of the same person. One run takes about two
-        seconds on a CPU.
-  \item A random split gives \SI{19.8}{\percent} instead of
-        \SI{30.3}{\percent} (about $-$\SI{35}{\percent}). It overestimates
-        the benefit, however, because almost identical neighbouring frames end
-        up in training and test.
-  \item A calm background and good light are more important than the design of
-        the calibration. A smooth movement of the target across the whole screen
-        was best.
-  \item Frames directly after a jump of the target have wrong labels. Removing
-        them helps a little, but costs nothing.
-  \item For a second person, personalization with the whole camera image brought
-        no gain, but with the eye crop of the demo it did
-        (\SI{26.9}{\percent} $\rightarrow$ \SI{9.7}{\percent}). The input is
-        therefore decisive. A calibration is also tied to the person: the
-        calibration of person~A was worse than the screen centre on person~B.
-  \item A short moving average (about \SI{0.5}{\second}) makes the predictions
-        about \SI{40}{\percent} calmer without a measurable loss of accuracy.
-        Longer windows raise the error, because the prediction lags behind the
-        gaze. Most of the error is systematic and cannot be removed by
-        smoothing.
+  \item \textbf{The generic model alone does not give good results yet.} The
+        model trained on GazeCapture was not better on the own recordings than
+        a simple estimate that always outputs the screen centre. The generic
+        model is therefore mainly suitable as a starting point for the later
+        personalization.
+  \item \textbf{A short personalization can reduce the error clearly.} With a
+        few minutes of personal recordings, the error with a temporal split fell
+        from \SI{31.8}{\percent} to \SI{27.9}{\percent} of the screen diagonal.
+        This corresponds to an improvement of about \SI{12}{\percent} over 18
+        sessions. For good recordings, the improvement was even about
+        \SI{46}{\percent}. This gain was also observed for a new recording of
+        the same person. Training takes only about two seconds on a CPU.
+        Personalization therefore needs neither much time nor particularly
+        strong hardware.
+  \item \textbf{A random split shows much better results, but is not
+        realistic.} With this split, the error fell from \SI{30.3}{\percent} to
+        \SI{19.8}{\percent}. This corresponds to an improvement of about
+        \SI{35}{\percent}. This result, however, is too positive, because very
+        similar frames of the same recording can appear in both the training
+        and the test set. A random split therefore does not reliably show how
+        well the model works in later real use.
+  \item \textbf{The recording conditions have a large influence on the
+        accuracy.} A calm background and enough light are particularly
+        important. A busy background can raise the error clearly. In addition, a
+        smooth movement of the calibration point over the whole screen gave the
+        best results, although not significantly. The type of calibration alone
+        is therefore not enough. The conditions during the recording must also
+        be right.
+  \item \textbf{Frames during the movement of the calibration point can have
+        wrong labels.} Especially right after a jump of the point, the stored
+        gaze positions sometimes no longer match the actual position. Removing
+        these frames improves the results only slightly. It is still sensible
+        to detect these frames and not to use them for training.
+  \item \textbf{The input of the model is also very important.} For a second
+        person, personalization with the whole camera image at first brought no
+        improvement. With a crop that mainly shows the eyes, the error in the
+        web demo, in contrast, fell from \SI{26.9}{\percent} to
+        \SI{9.7}{\percent}. This shows that not only the training, but also the
+        image information used plays an important role. In addition, the
+        calibration depends strongly on the person. The calibration of person~A
+        even led to worse results on person~B than the simple estimate of the
+        screen centre.
+  \item \textbf{Smoothing makes the predictions calmer, but does not improve the
+        accuracy.} A short moving average of about \SI{0.5}{\second} makes the
+        predictions about \SI{40}{\percent} more stable. The accuracy stays
+        roughly the same. With longer time windows, however, the error grows,
+        because the prediction reacts too late to a change of the gaze position.
+        A large part of the error therefore comes from systematic deviations
+        that smoothing cannot remove.
 \end{itemize}
-Overall, the thesis shows: data-efficient personalization works with simple
-means. But the accuracy depends strongly on the recording conditions, and it must be
-assessed with a realistic data split. The benefit also depends on the person
-and on the input: for a second person, personalization only worked with an eye
-crop, and a calibration of another person was worse than the screen centre. A
-study with more persons has to show how general this is.
+
+Overall, the results of this thesis show that personalization with a few
+personal recordings and a simple training procedure is possible. The whole
+pretrained model does not have to be retrained for this. It is enough to adapt
+a small additional part of the model. This makes training fast, and it needs
+only little personal data.
+
+However, success depends strongly on the recording conditions, the input used
+and the person. A calm background, good light and a suitable capture of the
+eyes are particularly important. In addition, the model must be evaluated with
+a temporal split of the data, so that the results match later real use as
+closely as possible.
+
+The study with a second person also showed that the same settings do not
+automatically work for every person. A calibration that works well for one
+person can even give worse results for another person. Further studies with
+more persons are therefore necessary. Only then can it be judged better how
+well the method transfers to other persons.
 
 \section{Outlook}
 \label{sec:ausblick}

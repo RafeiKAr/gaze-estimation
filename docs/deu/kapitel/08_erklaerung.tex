@@ -23,20 +23,28 @@ Hilfsmittel eingesetzt:
   \toprule
   \textbf{Werkzeug} & \textbf{Wofür} & \textbf{Betroffene Teile} \\
   \midrule
-  ChatGPT (OpenAI) & Testen der Implementierung; Verbesserung der Struktur
-                     des Programmcodes & Programmcode \\
+  ChatGPT (OpenAI) & Umsetzung meiner selbst entworfenen Programmstruktur in
+                     erste Code-Entwürfe (Laden der Daten, Training), Testen
+                     der Implementierung, Verbesserung der Codestruktur
+                   & Programmcode \\
   \addlinespace
   Claude (Anthropic) & \textbf{Code:} Prüfung und Auswertung des Codes,
                      Fehlersuche und Korrektur von Fehlern, Skripte zum
                      Nachrechnen der Ergebnisse (\code{auswertung.py},
-                     Notebook), Verbesserung der Web-Demo
-                   & Programmcode, Tabellen und Abbildungen in Kapitel~4 \\
+                     Notebook), Entwurf und Umsetzung der Auswertung der
+                     zeitlichen Glättung (\code{moving\_average.py}),
+                     Aufbereitung der Sitzungen der zweiten Person
+                     (\code{prepare\_session.py}), Abbildungen
+                     (\code{plot\_targets.py}), Änderungen an der Web-Demo
+                     (Kalibrierbewegung, Moving Average, Laden des Modells)
+                   & Programmcode, Tabellen und Abbildungen in Kapitel~4,
+                     Web-Demo \\
   \addlinespace
   Claude (Anthropic) & \textbf{Text:} Übersetzung zwischen Deutsch und
                      Englisch, sprachliche Überarbeitung und Vereinfachung,
                      Ausformulieren von Textabschnitten auf Grundlage meiner
                      Entwürfe, Ergebnisse und Notizen, Korrektur von Fehlern
-                   & Alle Kapitel, Kurzfassung \\
+                   & Alle Kapitel, Kurzfassung, begleitende Dokumentation \\
   \addlinespace
   Claude (Anthropic) & \textbf{Form:} LaTeX-Gestaltung (Titelseite nach der
                      BHT-Vorlage), Beschriftung der Abbildungen
@@ -45,8 +53,18 @@ Hilfsmittel eingesetzt:
 \end{tabularx}
 \end{center}
 
-Thema, Forschungsfragen, Aufbau der Experimente, Aufnahme der Webcam-Daten
-und Durchführung der Trainingsläufe stammen von mir. Alle Ergebnisse der
+\textit{Zur Entstehung des Codes:} Den Aufbau der Pipeline habe ich zu Beginn
+selbst geplant: Laden und Normieren der Daten, Splits, eingefrorener Backbone
+mit Regression Head, Training und Auswertung. In den ersten Tagen hat mir
+ChatGPT geholfen, diese Struktur in Python-Code umzusetzen. Den Code habe ich
+selbst ausgeführt, getestet und angepasst. Die fachlichen Entscheidungen, also
+Modell, Splits, Fehlermaß und Experimente, habe ich getroffen.
+
+Thema, Forschungsfragen, Aufbau der Experimente E0 bis E3, Aufnahme der
+Webcam-Daten und Durchführung aller Trainingsläufe und Demo-Tests stammen von
+mir. Die zusätzlichen Auswertungen E4 (Glättung, auf Anregung meines
+Betreuers) und E5 (zweite Person) habe ich gemeinsam mit Claude entworfen und
+selbst ausgeführt. Alle Ergebnisse der
 KI-Werkzeuge habe ich kritisch geprüft und bei Bedarf korrigiert; die Zahlen
 in Kapitel~4 wurden mit den gespeicherten Ergebnisdateien nachgerechnet. Die
 fachlichen Aussagen stützen sich auf die angegebene Literatur, KI-Werkzeuge
