@@ -1,6 +1,5 @@
 ---
 title: Gaze Personalization Demo
-emoji: 👀
 colorFrom: indigo
 colorTo: purple
 sdk: docker
